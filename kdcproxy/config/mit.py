@@ -21,9 +21,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+from kdcproxy.config import IConfig
+
 import ctypes
-import dns.resolver
-import dns.rdatatype
 import sys
 
 try:
@@ -131,59 +131,19 @@ class KRB5Profile:
         return bool(val.value)
 
     def section(self, *args):
-        output = {}
+        output = []
 
         for k, v in KRB5Profile.Iterator(self.__lib, self.__profile, *args):
-            output[k] = v
-            if v == None:
+            if v is None:
                 tmp = args + (k,)
-                output[k] = self.section(*tmp)
+                output.append((k, self.section(*tmp)))
+            else:
+                output.append((k, v))
 
         return output
 
-class KRB5Config:
+class MITConfig(IConfig):
     def __init__(self, *args, **kwargs):
-        self.reload()
-
-    def __lookup(self, query):
-        try:
-            reply = dns.resolver.query(query, dns.rdatatype.SRV)
-        except dns.resolver.NXDOMAIN:
-            reply = []
-
-        # FIXME: pay attention to weighting, preferably while still
-        # arriving at the same answer every time, for the sake of
-        # clients that are having longer conversations with servers.
-        reply = sorted(reply, key=lambda r: r.priority)
-        return tuple(map(lambda r: (str(r.target).rstrip('.'), r.port), reply))
-
-    def locate_kdc(self, realm):
-        if not realm:
-            return None
-
-        rconf = self.__config.get("realms", {}).get(realm, {})
-        servers = rconf.get('kdc', [])
-
-        if not servers and self.__config["dns"]:
-            servers = self.__lookup('_kerberos._tcp.%s' % realm)
-
-        return servers
-
-    def locate_kpasswd(self, realm):
-        if not realm:
-            return None
-
-        rconf = self.__config.get("realms", {}).get(realm, {})
-        servers = rconf.get('kpasswd_server', [])
-        if not servers:
-            servers = list(map(lambda s: (s[0], 464), rconf.get('admin_server', [])))
-
-        if not servers and self.__config["dns"]:
-            servers = self.__lookup('_kpasswd._tcp.%s' % realm)
-
-        return servers
-
-    def reload(self):
         self.__config = {}
         with KRB5Profile() as prof:
             # Load DNS setting
@@ -197,23 +157,33 @@ class KRB5Config:
 
             # Load all configured realms
             self.__config["realms"] = {}
-            for realm, values in prof.section("realms").items():
-                self.__config["realms"][realm] = {}
-                for server, hostport in values.items():
+            for realm, values in prof.section("realms"):
+                rconf = self.__config["realms"].setdefault(realm, {})
+                for server, hostport in values:
                     parsed = urlparse.urlparse(hostport)
-                    if parsed.scheme in ("http", "https"):
-                        continue
-
                     if parsed.hostname is None:
-                        parsed = urlparse.urlparse("scheme://" + hostport)
+                        scheme = {'kdc': 'kerberos'}.get(server, 'kpasswd')
+                        parsed = urlparse.urlparse(scheme + "://" + hostport)
 
-                    host = parsed.hostname
-                    port = parsed.port
-                    if port is None:
-                        port = {'kdc': 88}.get(server, 464)
+                    if parsed.port is not None and server == 'admin_server':
+                        hostpor = hostport.split(':', 1)[0]
+                        parsed = urlparse.urlparse("kpasswd://" + hostport)
 
-                    srvs = self.__config["realms"][realm].setdefault(server, [])
-                    srvs.append((host, port))
+                    rconf.setdefault(server, []).append(parsed.geturl())
+
+    def lookup(self, realm, kpasswd=False):
+        rconf = self.__config.get("realms", {}).get(realm, {})
+
+        if kpasswd:
+            servers  = rconf.get('kpasswd_server', [])
+            servers += rconf.get('admin_server', [])
+        else:
+            servers = rconf.get('kdc', [])
+
+        return tuple(servers)
+
+    def use_dns(self, default=True):
+        return self.__config["dns"]
 
 if __name__ == "__main__":
     from pprint import pprint
@@ -222,15 +192,14 @@ if __name__ == "__main__":
         assert conf
         pprint(conf)
 
-    conf = KRB5Config()
-
+    conf = MITConfig()
     for realm in sys.argv[1:]:
-        kdc = conf.locate_kdc(realm)
+        kdc = conf.lookup(realm)
         assert kdc
         print("\n%s (kdc): " % realm)
         pprint(kdc)
 
-        kpasswd = conf.locate_kpasswd(realm)
+        kpasswd = conf.lookup(realm, True)
         assert kpasswd
         print("\n%s (kpasswd): " % realm)
         pprint(kpasswd)

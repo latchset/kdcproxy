@@ -21,15 +21,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from config import KRB5Config
-import codec
+from kdcproxy.config import MetaResolver
+import kdcproxy.codec
 
 import socket
 
-try:
+try: # Python 3.x
     import http.client as httplib
-except ImportError:
+    import urllib.parse as urlparse
+except ImportError: # Python 2.x
     import httplib
+    import urlparse
 
 class HTTPException(Exception):
     def __init__(self, code, msg, headers=[]):
@@ -48,7 +50,7 @@ class HTTPException(Exception):
 
 class Application:
     def __init__(self):
-        self.__config = KRB5Config()
+        self.__resolver = MetaResolver()
 
     def __call__(self, env, start_response):
         try:
@@ -64,20 +66,21 @@ class Application:
             except codec.ParsingError as e:
                 raise HTTPException(400, e.message)
 
-            # Find the remote proxy address/port
-            if isinstance(pr, codec.KPASSWDProxyRequest):
-                servers = self.__config.locate_kpasswd(pr.realm)
-            else:
-                servers = self.__config.locate_kdc(pr.realm)
+            # Find the remote proxy
+            servers = self.__resolver.lookup(pr.realm,
+                                  isinstance(pr, codec.KPASSWDProxyRequest))
             if not servers:
                 raise HTTPException(503, "Can't find remote (%s)." % pr)
 
             # Connect to the remote server
-            for server in servers:
+            for server in map(urlparse.urlparse, servers):
+                if server.scheme.lower() not in ("kerberos+tcp", "kpasswd+tcp"):
+                    continue
+
                 for af in (socket.AF_INET6, socket.AF_INET):
                     sock = socket.socket(af, socket.SOCK_STREAM)
                     try:
-                        sock.connect(server)
+                        sock.connect((server.hostname, server.port))
                         break
                     except socket.gaierror:
                         sock.close()
