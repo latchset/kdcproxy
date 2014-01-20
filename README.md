@@ -56,9 +56,11 @@ krb5 AS requests and kpasswd requests, respectively. For example:
     kpasswd = kpasswd+tcp://kpasswd.example.com:464
 
 The realm configuration parameters may list multiple servers separate by a space.
-Currently, TCP is the only protocol supported. In the future when UDP support is
-added, leaving off the "+tcp" or "+udp" will result in both protocols being
-attempted. The port number is entirely optional.
+Leaving off the "+tcp" or "+udp" will result in both protocols being attempted. In
+this case, kdcproxy will attempt TCP connections first so that longer timeouts can
+be utilized. This also prevents possible lockouts when the KDC packets contain OTP
+token codes (which should preferably be sent to only one server). The port number
+is entirely optional.
 
 MIT libkrb5
 -----------
