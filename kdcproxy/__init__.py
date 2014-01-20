@@ -35,14 +35,15 @@ except ImportError: # Python 2.x
 
 class HTTPException(Exception):
     def __init__(self, code, msg, headers=[]):
-        headers = filter(lambda h: h[0] != 'Content-Length', headers)
+        headers = list(filter(lambda h: h[0] != 'Content-Length', headers))
         headers.append(('Content-Length', str(len(msg))))
 
         if 'Content-Type' not in dict(headers):
             headers.append(('Content-Type', 'text/plain'))
 
-        super(HTTPException, self).__init__(msg)
+        super(HTTPException, self).__init__(code, msg, headers)
         self.code = code
+        self.message = msg
         self.headers = headers
 
     def __str__(self):

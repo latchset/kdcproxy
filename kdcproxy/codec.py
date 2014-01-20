@@ -29,7 +29,9 @@ from pyasn1.codec.ber import decoder, encoder
 from pyasn1 import error
 
 class ParsingError(Exception):
-    pass
+    def __init__(self, message):
+        super(ParsingError, self).__init__(message)
+        self.message = message
 
 class ProxyRequest(object):
     TYPE = None
@@ -38,11 +40,15 @@ class ProxyRequest(object):
     @classmethod
     def parse(cls, data):
         (req, err) = decoder.decode(data, asn1Spec=asn1.ProxyMessage())
-        if err != '':
+        if err:
             raise ParsingError("Invalid request.")
 
         request = req.getComponentByName('message').asOctets()
         realm = req.getComponentByName('realm').asOctets()
+        try: # Python 3.x
+            realm = str(realm, "UTF8")
+        except TypeError: # Python 2.x
+            realm = str(realm)
 
         # Check the length of the whole request message.
         (length, ) = struct.unpack("!I", request[0:4])
