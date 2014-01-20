@@ -62,7 +62,7 @@ class DNSResolver(IResolver):
         
         try:
             reply = dns.resolver.query(query, dns.rdatatype.SRV)
-        except dns.resolver.NXDOMAIN:
+        except dns.exception.DNSException:
             reply = []
 
         # FIXME: pay attention to weighting, preferably while still
