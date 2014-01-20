@@ -166,7 +166,7 @@ class MITConfig(IConfig):
                         parsed = urlparse.urlparse(scheme + "://" + hostport)
 
                     if parsed.port is not None and server == 'admin_server':
-                        hostpor = hostport.split(':', 1)[0]
+                        hostport = hostport.split(':', 1)[0]
                         parsed = urlparse.urlparse("kpasswd://" + hostport)
 
                     rconf.setdefault(server, []).append(parsed.geturl())
