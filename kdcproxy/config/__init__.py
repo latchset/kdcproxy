@@ -116,32 +116,6 @@ class MetaResolver(IResolver):
         if dns in (None, True):
             self.__resolvers.append(DNSResolver())
 
-    def __normalize(self, servers):
-        for server in servers:
-            parsed = urlparse.urlparse(server)
-            if parsed.scheme not in self.SCHEMES:
-                logging.log(logging.DEBUG, "Skipping invalid server: %s" % server)
-                continue
-            
-            uris = (server,)
-            if parsed.scheme == "kerberos":
-                uris = ("kerberos+tcp:" + server.split(":", 1)[1],
-                        "kerberos+udp:" + server.split(":", 1)[1])
-            elif parsed.scheme == "kpasswd":
-                uris = ("kpasswd+tcp:" + server.split(":", 1)[1],
-                        "kpasswd+udp:" + server.split(":", 1)[1])
-            
-            for uri in uris:
-                parsed = urlparse.urlparse(uri)
-                
-                port = parsed.port
-                if port is None:
-                    port = socket.getservbyname(*parsed.scheme.split("+"))
-                
-                yield urlparse.urlunsplit((parsed.scheme,
-                                           "%s:%d" % (parsed.hostname, port),
-                                           parsed.path, "", ""))
-
     def __unique(self, items):
         "Removes duplicate items from an iterable while maintaining order."
         items = tuple(items)        
@@ -153,8 +127,7 @@ class MetaResolver(IResolver):
 
     def lookup(self, realm, kpasswd=False):
         for r in self.__resolvers:
-            servers = self.__normalize(r.lookup(realm, kpasswd))
-            servers = tuple(self.__unique(servers))
+            servers = tuple(self.__unique(r.lookup(realm, kpasswd)))
             if servers:
                 return servers
 
