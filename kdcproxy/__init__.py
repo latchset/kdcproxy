@@ -22,9 +22,13 @@
 # THE SOFTWARE.
 
 from kdcproxy.config import MetaResolver
-import kdcproxy.codec
+import kdcproxy.codec as codec
 
+import select
 import socket
+import sys
+import time
+import io
 
 try: # Python 3.x
     import http.client as httplib
@@ -41,6 +45,9 @@ class HTTPException(Exception):
         if 'Content-Type' not in dict(headers):
             headers.append(('Content-Type', 'text/plain'))
 
+        if sys.version_info.major == 3 and isinstance(msg, str):
+            msg = bytes(msg, "UTF8")
+
         super(HTTPException, self).__init__(code, msg, headers)
         self.code = code
         self.message = msg
@@ -50,8 +57,47 @@ class HTTPException(Exception):
         return "%d %s" % (self.code, httplib.responses[self.code])
 
 class Application:
+    SOCKTYPES = {
+        "tcp": socket.SOCK_STREAM,
+        "udp": socket.SOCK_DGRAM,
+    }
+
     def __init__(self):
         self.__resolver = MetaResolver()
+
+    def __await_reply(self, pr, rsocks, wsocks, timeout):
+        while timeout > time.time():
+            if not wsocks and not rsocks:
+                break
+
+            r, w, x = select.select(rsocks, wsocks, rsocks + wsocks,
+                                    timeout - time.time())
+            for sock in x:
+                sock.close()
+                try:
+                    rsocks.remove(sock)
+                except ValueError:
+                    pass
+                try:
+                    wsocks.remove(sock)
+                except ValueError:
+                    pass
+
+            for sock in w:
+                try:
+                    sock.sendall(pr.request)
+                except:
+                    continue
+                rsocks.append(sock)
+                wsocks.remove(sock)
+
+            for sock in r:
+                try:
+                    return sock.recv(1048576)
+                except:
+                    pass
+
+        return None
 
     def __call__(self, env, start_response):
         try:
@@ -73,30 +119,77 @@ class Application:
             if not servers:
                 raise HTTPException(503, "Can't find remote (%s)." % pr)
 
-            # Connect to the remote server
+            # Contact the remote server
+            reply = None
+            wsocks = []
+            rsocks = []
             for server in map(urlparse.urlparse, servers):
-                if server.scheme.lower() not in ("kerberos+tcp", "kpasswd+tcp"):
+                # Enforce valid, supported URIs
+                scheme = server.scheme.lower().split("+", 1)
+                if scheme[0] not in ("kerberos", "kpasswd"):
+                    continue
+                if len(scheme) > 1 and scheme[1] not in ("tcp", "udp"):
                     continue
 
-                for af in (socket.AF_INET6, socket.AF_INET):
-                    sock = socket.socket(af, socket.SOCK_STREAM)
-                    try:
-                        sock.connect((server.hostname, server.port))
-                        break
-                    except socket.gaierror:
-                        sock.close()
-                        sock = None
-                if sock:
-                    break
-            if not sock:
-                raise HTTPException(503, "Can't connect to remote (%s)." % pr)
+                # Do the DNS lookup
+                try:
+                    port = server.port
+                    if port is None:
+                        port = scheme[0]
+                    addrs = socket.getaddrinfo(server.hostname, port)
+                except socket.gaierror:
+                    continue
 
-            # Send the request to the remote server
-            try:
-                sock.sendall(pr.request)
-                reply = sock.recv(1048576)
-            finally:
+                # Sort addresses so that we get TCP first.
+                #
+                # Stick a None address on the end so we can get one
+                # more attempt after all servers have been contacted.
+                for addr in tuple(sorted(addrs)) + (None,):
+                    timeout = time.time() + 15
+                    if addr is not None:
+                        # Bypass unspecified socktypes
+                        if len(scheme) > 1 and addr[1] != self.SOCKTYPES[scheme[1]]:
+                            continue
+
+                        # Create the socket
+                        sock = socket.socket(*addr[:2])
+                        sock.setblocking(0)
+                        if sock.type == socket.SOCK_STREAM:
+                            timeout = time.time() + 10
+                        else:
+                            timeout = time.time() + 2
+
+                        # Connect
+                        try:
+                            sock.connect(addr[4])
+                            wsocks.append(sock)
+                        except socket.gaierror:
+                            continue
+                        except socket.error as e:
+                            if e.errno != 115: # EINPROGRESS
+                                continue
+                        except io.BlockingIOError:
+                            pass
+
+                    # Resend packets to UDP servers
+                    for sock in tuple(rsocks):
+                        if sock.type == socket.SOCK_DGRAM:
+                            wsocks.append(sock)
+                            rsocks.remove(sock)
+
+                    # Call select()
+                    reply = self.__await_reply(pr, rsocks, wsocks, timeout)
+                    if reply is not None:
+                        break
+
+                if reply is not None:
+                    break
+
+            for sock in rsocks + wsocks:
                 sock.close()
+
+            if reply is None:
+                raise HTTPException(503, "Remote unavailable (%s)." % pr)
 
             # Return the result to the client
             raise HTTPException(200, codec.encode(reply),
