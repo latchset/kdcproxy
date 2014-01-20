@@ -31,7 +31,7 @@ from pyasn1 import error
 class ParsingError(Exception):
     pass
 
-class ProxyRequest:
+class ProxyRequest(object):
     TYPE = None
     OFFSET = 4
 
