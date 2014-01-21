@@ -161,15 +161,17 @@ class Application:
 
                         # Connect
                         try:
+                            # In Python 2.x, non-blocking connect() throws
+                            # socket.error() with errno == EINPROGRESS. In
+                            # Python 3.x, it throws io.BlockingIOError().
                             sock.connect(addr[4])
-                            wsocks.append(sock)
-                        except socket.gaierror:
-                            continue
                         except socket.error as e:
-                            if e.errno != 115: # EINPROGRESS
+                            if e.errno != 115: # errno != EINPROGRESS
+                                sock.close()
                                 continue
                         except io.BlockingIOError:
                             pass
+                        wsocks.append(sock)
 
                     # Resend packets to UDP servers
                     for sock in tuple(rsocks):
