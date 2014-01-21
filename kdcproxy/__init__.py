@@ -152,7 +152,7 @@ class Application:
                             continue
 
                         # Create the socket
-                        sock = socket.socket(*addr[:2])
+                        sock = socket.socket(*addr[:3])
                         sock.setblocking(0)
                         if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_STREAM:
                             timeout = time.time() + 10
