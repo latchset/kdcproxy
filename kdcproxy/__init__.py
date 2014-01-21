@@ -154,7 +154,7 @@ class Application:
                         # Create the socket
                         sock = socket.socket(*addr[:2])
                         sock.setblocking(0)
-                        if sock.type == socket.SOCK_STREAM:
+                        if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_STREAM:
                             timeout = time.time() + 10
                         else:
                             timeout = time.time() + 2
@@ -175,7 +175,7 @@ class Application:
 
                     # Resend packets to UDP servers
                     for sock in tuple(rsocks):
-                        if sock.type == socket.SOCK_DGRAM:
+                        if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_DGRAM:
                             wsocks.append(sock)
                             rsocks.remove(sock)
 
