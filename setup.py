@@ -22,14 +22,17 @@
 # THE SOFTWARE.
 
 import os
+import sys
 from distutils.core import setup
 
-# Utility function to read the README file.
-# Used for the long_description.  It's nice, because now 1) we have a top level
-# README file and 2) it's easier to type in the README file than to put a raw
-# string in below ...
+dns = "dnspython"
+if sys.version_info.major == 3:
+    dns += "3"
+
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    fname = os.path.join(os.path.dirname(__file__), fname)
+    with open(fname) as f:
+        return f.read()
 
 setup(
     name = "kdcproxy",
@@ -40,11 +43,17 @@ setup(
     license = "MIT",
     keywords = "krb5 proxy http https kerberos",
     url = "http://github.com/npmccallum/kdcproxy",
-    packages=['kdcproxy'],
-    long_description=read('README.md'),
+    packages=['kdcproxy', 'kdcproxy.config'],
+    long_description=read('README'),
+    requires=['pyasn1', dns],
     classifiers=[
         "Development Status :: 3 - Alpha",
-        "Topic :: Utilities",
+        "Environment :: Web Environment",
+        "Intended Audience :: System Administrators",
         "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3",
+        "Topic :: Internet :: Proxy Servers",
     ],
 )
