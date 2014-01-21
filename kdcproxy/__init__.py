@@ -26,6 +26,7 @@ import kdcproxy.codec as codec
 
 import select
 import socket
+import struct
 import sys
 import time
 import io
@@ -85,7 +86,12 @@ class Application:
 
             for sock in w:
                 try:
-                    sock.sendall(pr.request)
+                    if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_DGRAM:
+                        # If we proxy over UDP, remove the 4-byte length
+                        # prefix since it is TCP only.
+                        sock.sendall(pr.request[4:])
+                    else:
+                        sock.sendall(pr.request)
                 except:
                     continue
                 rsocks.append(sock)
@@ -93,7 +99,14 @@ class Application:
 
             for sock in r:
                 try:
-                    return sock.recv(1048576)
+                    reply = sock.recv(1048576)
+
+                    # If we proxy over UDP, we will be missing the 4-byte
+                    # length prefix. So add it.
+                    if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_DGRAM:
+                        reply = struct.pack("!I", len(reply)) + reply
+
+                    return reply
                 except:
                     pass
 
