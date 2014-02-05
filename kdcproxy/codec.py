@@ -25,7 +25,7 @@ import kdcproxy.asn1 as asn1
 
 import struct
 
-from pyasn1.codec.ber import decoder, encoder
+from pyasn1.codec.der import decoder, encoder
 from pyasn1 import error
 
 class ParsingError(Exception):
