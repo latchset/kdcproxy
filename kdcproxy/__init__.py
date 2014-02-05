@@ -112,6 +112,18 @@ class Application:
 
         return None
 
+    def __filter_addr(self, addr):
+        if addr[0] not in (socket.AF_INET, socket.AF_INET6):
+            return False
+
+        if addr[1] not in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+            return False
+
+        if addr[2] not in (socket.IPPROTO_TCP, socket.IPPROTO_UDP):
+            return False
+
+        return True
+
     def __call__(self, env, start_response):
         try:
             # Validate the method
@@ -157,7 +169,8 @@ class Application:
                 #
                 # Stick a None address on the end so we can get one
                 # more attempt after all servers have been contacted.
-                for addr in tuple(sorted(addrs)) + (None,):
+                addrs = tuple(sorted(filter(self.__filter_addr, addrs)))
+                for addr in addrs + (None,):
                     timeout = time.time() + 15
                     if addr is not None:
                         # Bypass unspecified socktypes
