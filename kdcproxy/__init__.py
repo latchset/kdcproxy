@@ -67,12 +67,13 @@ class Application:
         self.__resolver = MetaResolver()
 
     def __await_reply(self, pr, rsocks, wsocks, timeout):
-        while timeout > time.time():
+        extra = 0
+        while (timeout + extra) > time.time():
             if not wsocks and not rsocks:
                 break
 
             r, w, x = select.select(rsocks, wsocks, rsocks + wsocks,
-                                    timeout - time.time())
+                                    (timeout + extra) - time.time())
             for sock in x:
                 sock.close()
                 try:
@@ -92,6 +93,7 @@ class Application:
                         sock.sendall(pr.request[4:])
                     else:
                         sock.sendall(pr.request)
+                        extra = 10 # New connections get 10 extra seconds
                 except:
                     continue
                 rsocks.append(sock)
@@ -171,7 +173,6 @@ class Application:
                 # more attempt after all servers have been contacted.
                 addrs = tuple(sorted(filter(self.__filter_addr, addrs)))
                 for addr in addrs + (None,):
-                    timeout = time.time() + 15
                     if addr is not None:
                         # Bypass unspecified socktypes
                         if len(scheme) > 1 and addr[1] != self.SOCKTYPES[scheme[1]]:
@@ -180,10 +181,6 @@ class Application:
                         # Create the socket
                         sock = socket.socket(*addr[:3])
                         sock.setblocking(0)
-                        if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_STREAM:
-                            timeout = time.time() + 10
-                        else:
-                            timeout = time.time() + 2
 
                         # Connect
                         try:
@@ -206,6 +203,7 @@ class Application:
                             rsocks.remove(sock)
 
                     # Call select()
+                    timeout = time.time() + (15 if addr is None else 2)
                     reply = self.__await_reply(pr, rsocks, wsocks, timeout)
                     if reply is not None:
                         break
