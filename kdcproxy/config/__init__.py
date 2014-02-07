@@ -24,6 +24,7 @@
 import importlib
 import itertools
 import logging
+import os
 import socket
 import sys
 
@@ -50,10 +51,12 @@ class IConfig(IResolver):
 class KDCProxyConfig(IConfig):
     GLOBAL = "global"
 
-    def __init__(self, file="/etc/kdcproxy.conf"):
+    def __init__(self, filename=None):
         self.__cp = configparser.ConfigParser()
+        if not filename and os.environ.has_key("KDCPROXY_CONFIG"):
+            filename = os.environ["KDCPROXY_CONFIG"]
         try:
-            self.__cp.read(file)
+            self.__cp.read(filename or "/etc/kdcproxy.conf")
         except configparser.Error:
             logging.log(logging.ERROR, "Unable to read config file: %s" % file)
 
