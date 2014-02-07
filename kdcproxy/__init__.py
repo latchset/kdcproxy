@@ -136,7 +136,11 @@ class Application:
 
             # Parse the request
             try:
-                pr = codec.decode(env["wsgi.input"].read())
+                length = int(env["CONTENT_LENGTH"])
+            except AttributeError:
+                length = -1
+            try:
+                pr = codec.decode(env["wsgi.input"].read(length))
             except codec.ParsingError as e:
                 raise HTTPException(400, e.message)
 
