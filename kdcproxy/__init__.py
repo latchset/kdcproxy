@@ -87,7 +87,7 @@ class Application:
 
             for sock in w:
                 try:
-                    if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_DGRAM:
+                    if self.sock_type(sock) == socket.SOCK_DGRAM:
                         # If we proxy over UDP, remove the 4-byte length
                         # prefix since it is TCP only.
                         sock.sendall(pr.request[4:])
@@ -105,7 +105,7 @@ class Application:
 
                     # If we proxy over UDP, we will be missing the 4-byte
                     # length prefix. So add it.
-                    if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_DGRAM:
+                    if self.sock_type(sock) == socket.SOCK_DGRAM:
                         reply = struct.pack("!I", len(reply)) + reply
 
                     return reply
@@ -125,6 +125,12 @@ class Application:
             return False
 
         return True
+
+    def sock_type(self, sock):
+        try:
+            return sock.type & ~socket.SOCK_NONBLOCK
+        except AttributeError:
+            return sock.type
 
     def __call__(self, env, start_response):
         try:
@@ -202,7 +208,7 @@ class Application:
 
                     # Resend packets to UDP servers
                     for sock in tuple(rsocks):
-                        if sock.type & ~socket.SOCK_NONBLOCK == socket.SOCK_DGRAM:
+                        if self.sock_type(sock) == socket.SOCK_DGRAM:
                             wsocks.append(sock)
                             rsocks.remove(sock)
 
