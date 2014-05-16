@@ -224,5 +224,4 @@ class Application:
             start_response(str(e), e.headers)
             return [e.message]
 
-if __name__ == "__main__":
-    application = Application()
+application = Application()
