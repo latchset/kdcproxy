@@ -36,7 +36,7 @@ def read(fname):
 
 setup(
     name = "kdcproxy",
-    version = "0.1.1",
+    version = "0.2",
     author = "Nalin Dahyabhai, Nathaniel McCallum",
     author_email = "nalin@redhat.com, npmccallum@redhat.com",
     description = ("A kerberos KDC HTTP proxy WSGI module."),
