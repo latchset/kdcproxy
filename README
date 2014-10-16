@@ -33,35 +33,38 @@ Automatic Configuration
 By default, no configuration is necessary. In this case, kdcproxy will use
 REALM DNS SRV record lookups to determine remote KDC locations.
 
-/etc/kdcproxy.conf
-------------------
+Master Configuration File
+-------------------------
 If you wish to have more detailed configuration, the first place you can
-configure kdcproxy is /etc/kdcproxy.conf. This configuration file takes precedence
-over all other configuration modules. This file is an ini-style configuration with
-a special section **[global]**. Two parameters are available in this
-section: **configs** and **use_dns**.
+configure kdcproxy is the master configuration file. This file exists at the
+location specified in the environment variable KDCPROXY_CONFIG. If this
+variable is unspecified, the default location is /etc/kdcproxy.conf. This
+configuration file takes precedence over all other configuration modules. This
+file is an ini-style configuration with a special section **[global]**. Two
+parameters are available in this section: **configs** and **use_dns**.
 
 The **use_dns** allows you to enable or disable use of DNS SRV record lookups.
 
 The **configs** parameter allows you to load other configuration modules for
 finding configuration in other places. The configuration modules specified in
-here will have priority in the order listed. For instance, if you wished to read
-configuration from MIT libkrb5, you would set the following:
+here will have priority in the order listed. For instance, if you wished to
+read configuration from MIT libkrb5, you would set the following:
 
     [global]
     configs = mit
 
-Aside from the **[global]** section, you may also specify manual configuration for
-realms. In this case, each section is the name of the realm and the parameters are
-**kerberos** or **kpasswd**. These specify the locations of the remote servers for
-krb5 AS requests and kpasswd requests, respectively. For example:
+Aside from the **[global]** section, you may also specify manual configuration
+for realms. In this case, each section is the name of the realm and the
+parameters are **kerberos** or **kpasswd**. These specify the locations of the
+remote servers for krb5 AS requests and kpasswd requests, respectively. For
+example:
 
     [EXAMPLE.COM]
     kerberos = kerberos+tcp://kdc.example.com:88
     kpasswd = kpasswd+tcp://kpasswd.example.com:464
 
-The realm configuration parameters may list multiple servers separated by a space.
-The order the realms are specified in will be respected by kdcproxy when
+The realm configuration parameters may list multiple servers separated by a
+space. The order the realms are specified in will be respected by kdcproxy when
 forwarding requests. The port number is optional. Possible schemes are:
 
 * kerberos://
@@ -74,10 +77,11 @@ forwarding requests. The port number is optional. Possible schemes are:
 MIT libkrb5
 -----------
 
-If you load the **mit** config module in /etc/kdcproxy.conf, kdcproxy will also
-read the config using libkrb5 (usually /etc/krb5.conf). If this module is used,
-kdcproxy will respect the DNS settings from the **[libdefaults]** section and
-the realm configuration from the **[realms]** section.
+If you load the **mit** config module in the master configuration file,
+kdcproxy will also read the config using libkrb5 (usually /etc/krb5.conf). If
+this module is used, kdcproxy will respect the DNS settings from the
+**[libdefaults]** section and the realm configuration from the **[realms]**
+section.
 
 For more information, see the documentation for MIT's krb5.conf.
 
