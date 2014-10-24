@@ -143,6 +143,8 @@ class KRB5Profile:
         return output
 
 class MITConfig(IConfig):
+    CONFIG_KEYS = ('kdc', 'admin_server', 'kpasswd_server')
+
     def __init__(self, *args, **kwargs):
         self.__config = {}
         with KRB5Profile() as prof:
@@ -160,6 +162,9 @@ class MITConfig(IConfig):
             for realm, values in prof.section("realms"):
                 rconf = self.__config["realms"].setdefault(realm, {})
                 for server, hostport in values:
+                    if server not in self.CONFIG_KEYS:
+                        continue
+
                     parsed = urlparse.urlparse(hostport)
                     if parsed.hostname is None:
                         scheme = {'kdc': 'kerberos'}.get(server, 'kpasswd')
