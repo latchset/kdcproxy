@@ -160,6 +160,8 @@ class MITConfig(IConfig):
             for realm, values in prof.section("realms"):
                 rconf = self.__config["realms"].setdefault(realm, {})
                 for server, hostport in values:
+                    if hostport.startswith('FILE:/'):
+                        continue
                     parsed = urlparse.urlparse(hostport)
                     if parsed.hostname is None:
                         scheme = {'kdc': 'kerberos'}.get(server, 'kpasswd')
