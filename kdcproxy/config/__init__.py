@@ -126,8 +126,9 @@ class MetaResolver(IResolver):
             try:
                 self.__resolvers.append(allsub[i]())
             except Exception as e:
+                fmt = (allsub[i], repr(e))
                 logging.log(logging.WARNING,
-                            "Error instantiating %s due to %s" % (cls, repr(e)))
+                            "Error instantiating %s due to %s" % fmt)
         assert self.__resolvers
         
         # See if we should use DNS
