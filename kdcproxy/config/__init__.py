@@ -53,8 +53,8 @@ class KDCProxyConfig(IConfig):
 
     def __init__(self, filename=None):
         self.__cp = configparser.ConfigParser()
-        if not filename and os.environ.has_key("KDCPROXY_CONFIG"):
-            filename = os.environ["KDCPROXY_CONFIG"]
+        if filename is None:
+            filename = os.environ.get("KDCPROXY_CONFIG", None)
         try:
             self.__cp.read(filename or "/etc/kdcproxy.conf")
         except configparser.Error:
