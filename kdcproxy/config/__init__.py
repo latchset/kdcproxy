@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 # Copyright (C) 2013, Red Hat, Inc.
 # All rights reserved.
 #
