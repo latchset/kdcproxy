@@ -1,8 +1,9 @@
+====================
 Welcome to kdcproxy!
-=====================
+====================
 
 This package contains a WSGI module for proxying KDC requests over HTTP by
-following the [MS-KKDCP] protocol. It aims to be simple to deploy, with
+following the `[MS-KKDCP]`_ protocol. It aims to be simple to deploy, with
 minimal configuration.
 
 Deploying kdcproxy
@@ -11,11 +12,26 @@ Deploying kdcproxy
 The kdcproxy module follows the standard WSGI protocol for deploying Python
 web applications. This makes configuration simple. Simply load up your favorite
 WSGI-enabled web server and point it to the module. For example, if you wish
-to use mod_wsgi, try something like this:
+to use mod_wsgi, try something like this::
 
-    WSGIScriptAlias /kdc /path/to/kdcproxy/__init__.py
+    WSGIDaemonProcess kdcproxy processes=2 threads=15 maximum-requests=1000 \
+        display-name=%{GROUP}
+    WSGIImportScript /usr/lib/python2.7/site-packages/kdcproxy/__init__.py \
+        process-group=kdcproxy application-group=kdcproxy
+    WSGIScriptAlias /KdcProxy /usr/lib/python2.7/site-packages/kdcproxy/__init__.py
+    WSGIScriptReloading Off
 
-For more information, see the documentation of your WSGI server.
+    <Location "/KdcProxy">
+        Satisfy Any
+        Order Deny,Allow
+        Allow from all
+        WSGIProcessGroup kdcproxy
+        WSGIApplicationGroup kdcproxy
+    </Location>
+
+`[MS-KKDCP]`_ suggests /KdcProxy as end point. For more information, see the
+documentation of your WSGI server.
+
 
 Configuring kdcproxy
 ====================
@@ -85,5 +101,62 @@ section.
 
 For more information, see the documentation for MIT's krb5.conf.
 
-[MS-KKDCP]: http://msdn.microsoft.com/en-us/library/hh553774.aspx
+Configuration reloading
+-----------------------
 
+kdcproxy reads its configurtion files when package is imported and a global
+WSGI application object is instantiated. For now kdcproxy does neither
+monitor its configuration files for changes nor supports runtime updates. You
+have to restart the WSGI process to make modification available. With Apache
+HTTP and mod_wsgi, a reload of the server also restarts all WSGI daemons.
+
+
+Configuring a client for kdcproxy
+=================================
+
+HTTPS proxy support is available since Kerberos 5 release 1.13. Some
+vendors have backported the feature to older versions of krb5, too. In order
+to use a HTTPS proxy, simply point the kdc and kpasswd options to the proxy URL like
+explained in `HTTPS proxy`_ configuration guide. Your ``/etc/krb5.conf`` may
+look like this::
+
+    [libdefaults]
+        default_realm = EXAMPLE.COM
+
+    [realms]
+        EXAMPLE.COM = {
+            http_anchors = FILE:/etc/krb5/cacert.pem
+            kdc = https://kerberos.example.com/KdcProxy
+            kpasswd_server = https://kerberos.example.com/KdcProxy
+    }
+
+
+To debug the feature, set the environment variable ``KRB5_TRACE`` to
+``/dev/stdout``. When the feature is correctly configured, you should see
+two POST requests in the access log of the WSGI server and a line containing
+``Sending HTTPS request`` in the debug output of kinit::
+
+    $ env KRB5_TRACE=/dev/stdout kinit user
+    [1037] 1431509096.26305: Getting initial credentials for user@EXAMPLE.COM
+    [1037] 1431509096.26669: Sending request (169 bytes) to EXAMPLE.COM
+    [1037] 1431509096.26939: Resolving hostname kerberos.example.com
+    [1037] 1431509096.34377: TLS certificate name matched "kerberos.example.com"
+    [1037] 1431509096.38791: Sending HTTPS request to https 128.66.0.1:443
+    [1037] 1431509096.46387: Received answer (344 bytes) from https 128.66.0.1:443
+    [1037] 1431509096.46411: Terminating TCP connection to https 128.66.0.1:443
+    ...
+
+If kinit still connects to port 88/TCP or port 88/UDP, then System Security
+Services Daemon's Kerberos locator plugin might override the settings in
+/etc/krb5.conf. With the environment variable ``SSSD_KRB5_LOCATOR_DEBUG=1``,
+kinit and sssd_krb5_locator_plugin print out additional debug information. To
+disable the KDC locator feature, edit ``/etc/sssd/sssd.conf`` and set
+``krb5_use_kdcinfo`` to False::
+
+    [domain/example.com]
+    krb5_use_kdcinfo = False
+
+Don't forget to restart SSSD!
+
+.. _[MS-KKDCP]: http://msdn.microsoft.com/en-us/library/hh553774.aspx
+.. _HTTPS Proxy: http://web.mit.edu/kerberos/krb5-current/doc/admin/https.html
