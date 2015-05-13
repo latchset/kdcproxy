@@ -27,20 +27,21 @@ dns = "dnspython"
 if sys.version_info.major == 3:
     dns += "3"
 
+
 def read(fname):
     fname = os.path.join(os.path.dirname(__file__), fname)
     with open(fname) as f:
         return f.read()
 
 setup(
-    name = "kdcproxy",
-    version = "0.2.1",
-    author = "Nalin Dahyabhai, Nathaniel McCallum",
-    author_email = "nalin@redhat.com, npmccallum@redhat.com",
-    description = ("A kerberos KDC HTTP proxy WSGI module."),
-    license = "MIT",
-    keywords = "krb5 proxy http https kerberos",
-    url = "http://github.com/npmccallum/kdcproxy",
+    name="kdcproxy",
+    version="0.2.1",
+    author="Nalin Dahyabhai, Nathaniel McCallum",
+    author_email="nalin@redhat.com, npmccallum@redhat.com",
+    description=("A kerberos KDC HTTP proxy WSGI module."),
+    license="MIT",
+    keywords="krb5 proxy http https kerberos",
+    url="http://github.com/npmccallum/kdcproxy",
     packages=['kdcproxy', 'kdcproxy.config'],
     long_description=read('README'),
     requires=['pyasn1', dns],

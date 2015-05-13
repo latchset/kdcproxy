@@ -19,17 +19,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import kdcproxy.asn1 as asn1
-
 import struct
 
-from pyasn1.codec.der import decoder, encoder
 from pyasn1 import error
+from pyasn1.codec.der import decoder, encoder
+
+import kdcproxy.asn1 as asn1
+
 
 class ParsingError(Exception):
+
     def __init__(self, message):
         super(ParsingError, self).__init__(message)
         self.message = message
+
 
 class ProxyRequest(object):
     TYPE = None
@@ -43,9 +46,9 @@ class ProxyRequest(object):
 
         request = req.getComponentByName('message').asOctets()
         realm = req.getComponentByName('realm').asOctets()
-        try: # Python 3.x
+        try:  # Python 3.x
             realm = str(realm, "UTF8")
-        except TypeError: # Python 2.x
+        except TypeError:  # Python 2.x
             realm = str(realm)
 
         # Check the length of the whole request message.
@@ -69,17 +72,22 @@ class ProxyRequest(object):
 
         if len(err) > 0:
             type = self.__class__.__name__[:0 - len(ProxyRequest.__name__)]
-            raise ParsingError("%s request has %d extra bytes." % (type, len(err)))
+            raise ParsingError("%s request has %d extra bytes." %
+                               (type, len(err)))
 
     def __str__(self):
         type = self.__class__.__name__[:0 - len(ProxyRequest.__name__)]
-        return "%s %s-REQ (%d bytes)" % (self.realm, type, len(self.request) - 4)
+        return "%s %s-REQ (%d bytes)" % (self.realm, type,
+                                         len(self.request) - 4)
+
 
 class TGSProxyRequest(ProxyRequest):
     TYPE = asn1.TGSREQ
 
+
 class ASProxyRequest(ProxyRequest):
     TYPE = asn1.ASREQ
+
 
 class KPASSWDProxyRequest(ProxyRequest):
     TYPE = asn1.APREQ
@@ -110,8 +118,10 @@ class KPASSWDProxyRequest(ProxyRequest):
         # See if the tag looks like an AP request, which would look like the
         # start of a password change request. The rest of it should be a
         # KRB-PRIV message.
-        (apreq, err) = decoder.decode(request[10:length + 10], asn1Spec=asn1.APREQ())
-        (krbpriv, err) = decoder.decode(request[length + 10:], asn1Spec=asn1.KRBPriv())
+        (apreq, err) = decoder.decode(request[10:length + 10],
+                                      asn1Spec=asn1.APREQ())
+        (krbpriv, err) = decoder.decode(request[length + 10:],
+                                        asn1Spec=asn1.KRBPriv())
 
         super(KPASSWDProxyRequest, self).__init__(realm, request, err)
         self.version = version
@@ -120,8 +130,10 @@ class KPASSWDProxyRequest(ProxyRequest):
         tmp = super(KPASSWDProxyRequest, self).__str__()
         tmp += " (version 0x%04x)" % self.version
 
+
 def decode(data):
     return ProxyRequest.parse(data)
+
 
 def encode(data):
     rep = asn1.ProxyMessage()

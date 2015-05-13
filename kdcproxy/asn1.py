@@ -19,22 +19,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from pyasn1.type import univ, char, namedtype, tag
+from pyasn1.type import char, namedtype, tag, univ
+
 
 class ProxyMessageKerberosMessage(univ.OctetString):
     tagSet = univ.OctetString.tagSet.tagExplicitly(
         tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 0)
     )
 
+
 class ProxyMessageTargetDomain(char.GeneralString):
     tagSet = char.GeneralString.tagSet.tagExplicitly(
         tag.Tag(tag.tagClassContext, tag.tagFormatConstructed, 1)
     )
 
+
 class ProxyMessageDCLocateHint(univ.Integer):
     tagSet = univ.Integer.tagSet.tagExplicitly(
         tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
     )
+
 
 class ProxyMessage(univ.Sequence):
     componentType = namedtype.NamedTypes(
@@ -43,20 +47,24 @@ class ProxyMessage(univ.Sequence):
         namedtype.OptionalNamedType('flags', ProxyMessageDCLocateHint())
     )
 
+
 class ASREQ(univ.Sequence):
     tagSet = univ.Sequence.tagSet.tagExplicitly(
         tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
     )
+
 
 class TGSREQ(univ.Sequence):
     tagSet = univ.Sequence.tagSet.tagExplicitly(
         tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 12)
     )
 
+
 class APREQ(univ.Sequence):
     tagSet = univ.Sequence.tagSet.tagExplicitly(
         tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 14)
     )
+
 
 class KRBPriv(univ.Sequence):
     tagSet = univ.Sequence.tagSet.tagExplicitly(

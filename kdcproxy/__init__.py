@@ -19,24 +19,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from kdcproxy.config import MetaResolver
-import kdcproxy.codec as codec
-
+import io
 import select
 import socket
 import struct
 import sys
 import time
-import io
 
-try: # Python 3.x
+try:  # Python 3.x
     import http.client as httplib
     import urllib.parse as urlparse
-except ImportError: # Python 2.x
+except ImportError:  # Python 2.x
     import httplib
     import urlparse
 
+import kdcproxy.codec as codec
+from kdcproxy.config import MetaResolver
+
+
 class HTTPException(Exception):
+
     def __init__(self, code, msg, headers=[]):
         headers = list(filter(lambda h: h[0] != 'Content-Length', headers))
         headers.append(('Content-Length', str(len(msg))))
@@ -54,6 +56,7 @@ class HTTPException(Exception):
 
     def __str__(self):
         return "%d %s" % (self.code, httplib.responses[self.code])
+
 
 class Application:
     SOCKTYPES = {
@@ -91,7 +94,7 @@ class Application:
                         sock.sendall(pr.request[4:])
                     else:
                         sock.sendall(pr.request)
-                        extra = 10 # New connections get 10 extra seconds
+                        extra = 10  # New connections get 10 extra seconds
                 except:
                     continue
                 rsocks.append(sock)
@@ -149,8 +152,10 @@ class Application:
                 raise HTTPException(400, e.message)
 
             # Find the remote proxy
-            servers = self.__resolver.lookup(pr.realm,
-                                  isinstance(pr, codec.KPASSWDProxyRequest))
+            servers = self.__resolver.lookup(
+                pr.realm,
+                kpasswd=isinstance(pr, codec.KPASSWDProxyRequest)
+            )
             if not servers:
                 raise HTTPException(503, "Can't find remote (%s)." % pr)
 
@@ -183,7 +188,8 @@ class Application:
                 for addr in addrs + (None,):
                     if addr is not None:
                         # Bypass unspecified socktypes
-                        if len(scheme) > 1 and addr[1] != self.SOCKTYPES[scheme[1]]:
+                        if (len(scheme) > 1
+                                and addr[1] != self.SOCKTYPES[scheme[1]]):
                             continue
 
                         # Create the socket
@@ -197,7 +203,7 @@ class Application:
                             # Python 3.x, it throws io.BlockingIOError().
                             sock.connect(addr[4])
                         except socket.error as e:
-                            if e.errno != 115: # errno != EINPROGRESS
+                            if e.errno != 115:  # errno != EINPROGRESS
                                 sock.close()
                                 continue
                         except io.BlockingIOError:

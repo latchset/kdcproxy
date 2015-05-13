@@ -23,28 +23,29 @@ import importlib
 import itertools
 import logging
 import os
-import socket
-import sys
 
-try: # Python 3.x
+try:  # Python 3.x
     import configparser
-    import urllib.parse as urlparse
-except ImportError: # Python 2.x
+except ImportError:  # Python 2.x
     import ConfigParser as configparser
-    import urlparse
 
-import dns.resolver
 import dns.rdatatype
+import dns.resolver
+
 
 class IResolver(object):
+
     def lookup(self, realm, kpasswd=False):
         "Returns an iterable of remote server URIs."
         raise NotImplementedError()
 
+
 class IConfig(IResolver):
+
     def use_dns(self):
         "Returns whether or not DNS should be used. Returns None if not set."
         raise NotImplementedError()
+
 
 class KDCProxyConfig(IConfig):
     GLOBAL = "global"
@@ -66,10 +67,11 @@ class KDCProxyConfig(IConfig):
                 logging.log(logging.ERROR, "Error reading config: %s" % e)
         except configparser.Error:
             pass
-    
+
     def lookup(self, realm, kpasswd=False):
+        service = "kpasswd" if kpasswd else "kerberos"
         try:
-            servers = self.__cp.get(realm, "kpasswd" if kpasswd else "kerberos")
+            servers = self.__cp.get(realm, service)
             return map(lambda s: s.strip(), servers.strip().split(" "))
         except configparser.Error:
             return ()
@@ -80,10 +82,12 @@ class KDCProxyConfig(IConfig):
         except configparser.Error:
             return None
 
+
 class DNSResolver(IResolver):
+
     def __dns(self, service, protocol, realm):
         query = '_%s._%s.%s' % (service, protocol, realm)
-        
+
         try:
             reply = dns.resolver.query(query, dns.rdatatype.SRV)
         except dns.exception.DNSException:
@@ -93,21 +97,22 @@ class DNSResolver(IResolver):
         # arriving at the same answer every time, for the sake of
         # clients that are having longer conversations with servers.
         reply = sorted(reply, key=lambda r: r.priority)
-        
+
         for entry in reply:
             host = str(entry.target).rstrip('.')
             yield (host, entry.port)
 
     def lookup(self, realm, kpasswd=False):
         service = "kpasswd" if kpasswd else "kerberos"
-        
+
         for protocol in ("tcp", "udp"):
             servers = tuple(self.__dns(service, protocol, realm))
             if not servers and kpasswd:
-                servers = self.__dns("kerberos-adm", protocol, realm) 
-            
+                servers = self.__dns("kerberos-adm", protocol, realm)
+
             for host, port in servers:
                 yield "%s://%s:%d" % (service, host, port)
+
 
 class MetaResolver(IResolver):
     SCHEMES = ("kerberos", "kerberos+tcp", "kerberos+udp",
@@ -128,7 +133,7 @@ class MetaResolver(IResolver):
                 logging.log(logging.WARNING,
                             "Error instantiating %s due to %s" % fmt)
         assert self.__resolvers
-        
+
         # See if we should use DNS
         dns = None
         for cfg in self.__resolvers:
@@ -143,7 +148,7 @@ class MetaResolver(IResolver):
 
     def __unique(self, items):
         "Removes duplicate items from an iterable while maintaining order."
-        items = tuple(items)        
+        items = tuple(items)
         unique = set(items)
         for item in items:
             if item in unique:

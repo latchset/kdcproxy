@@ -19,8 +19,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from kdcproxy.config import IConfig
-
 import ctypes
 import sys
 
@@ -29,10 +27,16 @@ try:
 except ImportError:
     import urlparse
 
+from kdcproxy.config import IConfig
+
+
 class KRB5Profile:
-    class Error(Exception): pass
+
+    class Error(Exception):
+        pass
 
     class Library:
+
         def __init__(self):
             self.__dll = ctypes.CDLL('libkrb5.so.3')
 
@@ -48,11 +52,12 @@ class KRB5Profile:
             return inner
 
     class Iterator:
+
         def __init__(self, lib, profile, *args):
             self.__lib = lib
 
             # Convert string arguments to UTF8 bytes
-            args = list(args) + [None,]
+            args = list(args) + [None, ]
             for i in range(len(args)):
                 if type(args[i]) not in (bytes, type(None)):
                     args[i] = bytes(args[i], "UTF8")
@@ -80,7 +85,7 @@ class KRB5Profile:
                     raise KRB5Profile.Error()
 
                 key = name.value
-                if type(key) is not str:
+                if not isinstance(key, str):
                     key = str(key, "UTF8")
 
                 val = value.value
@@ -140,6 +145,7 @@ class KRB5Profile:
 
         return output
 
+
 class MITConfig(IConfig):
     CONFIG_KEYS = ('kdc', 'admin_server', 'kpasswd_server')
 
@@ -178,7 +184,7 @@ class MITConfig(IConfig):
         rconf = self.__config.get("realms", {}).get(realm, {})
 
         if kpasswd:
-            servers  = rconf.get('kpasswd_server', [])
+            servers = rconf.get('kpasswd_server', [])
             servers += rconf.get('admin_server', [])
         else:
             servers = rconf.get('kdc', [])
