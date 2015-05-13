@@ -1,1 +1,5 @@
 *.pyc
+/.tox
+/dist
+/build
+/MANIFEST
