@@ -41,13 +41,14 @@ class HTTPException(Exception):
 
     def __init__(self, code, msg, headers=[]):
         headers = list(filter(lambda h: h[0] != 'Content-Length', headers))
-        headers.append(('Content-Length', str(len(msg))))
 
         if 'Content-Type' not in dict(headers):
-            headers.append(('Content-Type', 'text/plain'))
+            headers.append(('Content-Type', 'text/plain; charset=utf-8'))
 
         if sys.version_info.major == 3 and isinstance(msg, str):
-            msg = bytes(msg, "UTF8")
+            msg = bytes(msg, "utf-8")
+
+        headers.append(('Content-Length', str(len(msg))))
 
         super(HTTPException, self).__init__(code, msg, headers)
         self.code = code
@@ -138,8 +139,7 @@ class Application:
             # Validate the method
             method = env["REQUEST_METHOD"].upper()
             if method != "POST":
-                raise HTTPException(405, "Method not allowed (%s)." % method,
-                                    ("Allow", "POST"))
+                raise HTTPException(405, "Method not allowed (%s)." % method)
 
             # Parse the request
             try:
