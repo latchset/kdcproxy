@@ -128,6 +128,12 @@ class KRB5Profile:
 
     def get_bool(self, name, subname=None, subsubname=None, default=False):
         val = ctypes.c_uint(1)
+        if sys.version_info[0] == 3:
+            name = name.encode('ascii')
+            if subname is not None:
+                subname = subname.encode('ascii')
+            if subsubname is not None:
+                subsubname = subsubname.encode('ascii')
         self.__lib.exc("profile_get_boolean")(self.__profile,
                                               name, subname, subsubname,
                                               int(default), ctypes.byref(val))
@@ -156,7 +162,7 @@ class MITConfig(IConfig):
             self.__config["dns"] = prof.get_bool("libdefaults",
                                                  "dns_fallback",
                                                  default=True)
-            if "dns_lookup_kdc" in prof.section("libdefaults"):
+            if "dns_lookup_kdc" in dict(prof.section("libdefaults")):
                 self.__config["dns"] = prof.get_bool("libdefaults",
                                                      "dns_lookup_kdc",
                                                      default=True)
@@ -184,8 +190,8 @@ class MITConfig(IConfig):
         rconf = self.__config.get("realms", {}).get(realm, {})
 
         if kpasswd:
-            servers = rconf.get('kpasswd_server', [])
-            servers += rconf.get('admin_server', [])
+            servers = list(rconf.get('kpasswd_server', []))
+            servers.extend(rconf.get('admin_server', []))
         else:
             servers = rconf.get('kdc', [])
 
