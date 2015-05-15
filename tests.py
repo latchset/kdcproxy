@@ -24,7 +24,7 @@ import unittest
 from base64 import b64decode
 try:
     from unittest import mock
-except ImportError:
+except ImportError:  # pragma: no cover
     import mock
 
 
@@ -32,7 +32,7 @@ from dns.rdataclass import IN as RDCLASS_IN
 from dns.rdatatype import SRV as RDTYPE_SRV
 from dns.rdtypes.IN.SRV import SRV
 
-from pyasn1.codec.der import decoder
+from pyasn1.codec.der import decoder, encoder
 
 from webtest import TestApp
 
@@ -47,14 +47,77 @@ KRB5_CONFIG = os.path.join(HERE, 'tests.krb5.conf')
 
 
 class KDCProxyWSGITests(unittest.TestCase):
+    addrinfo = [
+        (2, 1, 6, '', ('128.66.0.2', 88)),
+        (2, 2, 17, '', ('128.66.0.2', 88)),
+        (2, 3, 0, '', ('128.66.0.2', 88))
+    ]
+
     def setUp(self):  # noqa
-        self.app = TestApp(kdcproxy.application)
+        self.app = kdcproxy.Application()
+        self.await_reply = self.app._Application__await_reply = mock.Mock()
+        self.await_reply.return_value = b'RESPONSE'
+        self.resolver = self.app._Application__resolver = mock.Mock()
+        self.resolver.lookup.return_value = ["kerberos://k1.kdcproxy.test.:88"]
+        self.tapp = TestApp(self.app)
+
+    def post(self, body, expect_errors=False):
+        return self.tapp.post(
+            '/', body, [("Content-Type", "application/kerberos")],
+            expect_errors=expect_errors
+        )
+
+    def assert_response(self, response):
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content_type, 'application/kerberos')
+        self.assertEqual(response.body, b'0\x0c\xa0\n\x04\x08RESPONSE')
 
     def test_get(self):
-        r = self.app.get('/', expect_errors=True)
+        r = self.tapp.get('/', expect_errors=True)
         self.assertEqual(r.status_code, 405)
         self.assertEqual(r.status, '405 Method Not Allowed')
         self.assertEqual(r.text, 'Method not allowed (GET).')
+
+    @mock.patch('socket.getaddrinfo', return_value=addrinfo)
+    @mock.patch('socket.socket', autospec=True)
+    def test_post_asreq(self, m_socket, m_getaddrinfo):
+        response = self.post(KDCProxyCodecTests.asreq1)
+        self.assert_response(response)
+        self.resolver.lookup.assert_called_once_with('FREEIPA.LOCAL',
+                                                     kpasswd=False)
+        m_getaddrinfo.assert_called_once_with('k1.kdcproxy.test.', 88)
+        m_socket.assert_called_once_with(2, 1, 6)
+        m_socket.return_value.connect.assert_called_once_with(
+            ('128.66.0.2', 88)
+        )
+
+    @mock.patch('socket.getaddrinfo', return_value=addrinfo)
+    @mock.patch('socket.socket', autospec=True)
+    def test_post_kpasswd(self, m_socket, m_getaddrinfo):
+        response = self.post(KDCProxyCodecTests.kpasswdreq)
+        self.assert_response(response)
+        self.resolver.lookup.assert_called_once_with('FREEIPA.LOCAL',
+                                                     kpasswd=True)
+        m_getaddrinfo.assert_called_once_with('k1.kdcproxy.test.', 88)
+        m_socket.assert_called_once_with(2, 1, 6)
+        m_socket.return_value.connect.assert_called_once_with(
+            ('128.66.0.2', 88)
+        )
+
+    def test_no_server(self):
+        self.resolver.lookup.reset_mock()
+        self.resolver.lookup.return_value = []
+        response = self.post(KDCProxyCodecTests.asreq1, True)
+        self.resolver.lookup.assert_called_once_with('FREEIPA.LOCAL',
+                                                     kpasswd=False)
+        self.assertEqual(response.status_code, 503)
+
+        self.resolver.lookup.reset_mock()
+        self.resolver.lookup.return_value = []
+        response = self.post(KDCProxyCodecTests.kpasswdreq, True)
+        self.resolver.lookup.assert_called_once_with('FREEIPA.LOCAL',
+                                                     kpasswd=True)
+        self.assertEqual(response.status_code, 503)
 
 
 def decode(data):
@@ -127,19 +190,31 @@ class KDCProxyCodecTests(unittest.TestCase):
         if cls is not codec.KPASSWDProxyRequest:
             inner, err = decoder.decode(outer.request[outer.OFFSET:],
                                         asn1Spec=outer.TYPE())
-            if err:
+            if err:  # pragma: no cover
                 self.fail(err)
             self.assertIsInstance(inner, outer.TYPE)
+            der = encoder.encode(inner)
+            encoded = codec.encode(der)
+            self.assertIsInstance(encoded, bytes)
+        return outer
 
     def test_asreq(self):
-        self.assert_decode(self.asreq1, codec.ASProxyRequest)
-        self.assert_decode(self.asreq2, codec.ASProxyRequest)
+        outer = self.assert_decode(self.asreq1, codec.ASProxyRequest)
+        self.assertEqual(str(outer), 'FREEIPA.LOCAL AS-REQ (169 bytes)')
+        outer = self.assert_decode(self.asreq2, codec.ASProxyRequest)
+        self.assertEqual(str(outer), 'FREEIPA.LOCAL AS-REQ (264 bytes)')
 
     def test_tgsreq(self):
-        self.assert_decode(self.tgsreq, codec.TGSProxyRequest)
+        outer = self.assert_decode(self.tgsreq, codec.TGSProxyRequest)
+        self.assertEqual(str(outer), 'FREEIPA.LOCAL TGS-REQ (936 bytes)')
 
     def test_kpasswdreq(self):
-        self.assert_decode(self.kpasswdreq, codec.KPASSWDProxyRequest)
+        outer = self.assert_decode(self.kpasswdreq,
+                                   codec.KPASSWDProxyRequest)
+        self.assertEqual(
+            str(outer),
+            'FREEIPA.LOCAL KPASSWD-REQ (603 bytes) (version 0x0001)'
+        )
 
 
 class KDCProxyConfigTests(unittest.TestCase):
