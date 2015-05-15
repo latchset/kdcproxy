@@ -19,8 +19,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import os
 import unittest
 from base64 import b64decode
+try:
+    from unittest import mock
+except ImportError:
+    import mock
+
+
+from dns.rdataclass import IN as RDCLASS_IN
+from dns.rdatatype import SRV as RDTYPE_SRV
+from dns.rdtypes.IN.SRV import SRV
 
 from pyasn1.codec.der import decoder
 
@@ -29,8 +39,11 @@ from webtest import TestApp
 import kdcproxy
 # from kdcproxy import asn1
 from kdcproxy import codec
-# from kdcproxy import config
-# from kdcproxy.config import mit
+from kdcproxy import config
+from kdcproxy.config import mit
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+KRB5_CONFIG = os.path.join(HERE, 'tests.krb5.conf')
 
 
 class KDCProxyWSGITests(unittest.TestCase):
@@ -127,6 +140,93 @@ class KDCProxyCodecTests(unittest.TestCase):
 
     def test_kpasswdreq(self):
         self.assert_decode(self.kpasswdreq, codec.KPASSWDProxyRequest)
+
+
+class KDCProxyConfigTests(unittest.TestCase):
+
+    def test_mit_config(self):
+        with mock.patch.dict('os.environ', {'KRB5_CONFIG': KRB5_CONFIG}):
+            cfg = mit.MITConfig()
+
+        self.assertIs(cfg.use_dns(), False)
+        self.assertEqual(
+            cfg.lookup('KDCPROXY.TEST'),
+            (
+                'kerberos://k1.kdcproxy.test.:88',
+                'kerberos://k2.kdcproxy.test.:1088'
+            )
+        )
+        # wrong? man page says port 464 on admin server
+        self.assertEqual(
+            cfg.lookup('KDCPROXY.TEST', kpasswd=True),
+            (
+                'kpasswd://adm.kdcproxy.test.:1749',
+                'kpasswd://adm.kdcproxy.test.'
+            )
+        )
+        self.assertEqual(
+            cfg.lookup('KDCPROXY.TEST', kpasswd=True),
+            cfg.lookup('KDCPROXY.TEST', True)
+        )
+        self.assertEqual(cfg.lookup('KDCPROXY.MISSING'), ())
+        self.assertEqual(cfg.lookup('KDCPROXY.MISSING', True), ())
+
+    def mksrv(self, txt):
+        priority, weight, port, target = txt.split(' ')
+        return SRV(
+            rdclass=RDCLASS_IN,  # Internet
+            rdtype=RDTYPE_SRV,  # Server Selector
+            priority=int(priority),
+            weight=int(weight),
+            port=int(port),
+            target=target
+        )
+
+    @mock.patch('dns.resolver.query')
+    def test_dns_config(self, m_query):
+        cfg = config.DNSResolver()
+        tcp = [
+            self.mksrv('30 100 88 k1_tcp.kdcproxy.test.'),
+            self.mksrv('10 100 1088 k2_tcp.kdcproxy.test.'),
+        ]
+        udp = [
+            self.mksrv('0 100 88 k1_udp.kdcproxy.test.'),
+            self.mksrv('10 100 1088 k2_udp.kdcproxy.test.'),
+            self.mksrv('0 100 88 k3_udp.kdcproxy.test.'),
+        ]
+        m_query.side_effect = [tcp, udp]
+
+        self.assertEqual(
+            tuple(cfg.lookup('KDCPROXY.TEST')),
+            (
+                'kerberos://k2_tcp.kdcproxy.test:1088',
+                'kerberos://k1_tcp.kdcproxy.test:88',
+                'kerberos://k1_udp.kdcproxy.test:88',
+                'kerberos://k3_udp.kdcproxy.test:88',
+                'kerberos://k2_udp.kdcproxy.test:1088'
+            )
+        )
+        self.assertEqual(m_query.call_count, 2)
+        m_query.assert_any_call('_kerberos._tcp.KDCPROXY.TEST', RDTYPE_SRV)
+        m_query.assert_any_call('_kerberos._udp.KDCPROXY.TEST', RDTYPE_SRV)
+
+        m_query.reset_mock()
+        adm = [
+            self.mksrv('0 0 749 adm.kdcproxy.test.'),
+        ]
+        empty = []
+        m_query.side_effect = (empty, adm, empty, empty)
+        self.assertEqual(
+            tuple(cfg.lookup('KDCPROXY.TEST', kpasswd=True)),
+            (
+                'kpasswd://adm.kdcproxy.test:749',
+            )
+        )
+        self.assertEqual(m_query.call_count, 4)
+        m_query.assert_any_call('_kpasswd._tcp.KDCPROXY.TEST', RDTYPE_SRV)
+        m_query.assert_any_call('_kerberos-adm._tcp.KDCPROXY.TEST', RDTYPE_SRV)
+        m_query.assert_any_call('_kpasswd._udp.KDCPROXY.TEST', RDTYPE_SRV)
+        m_query.assert_any_call('_kerberos-adm._udp.KDCPROXY.TEST', RDTYPE_SRV)
 
 
 if __name__ == "__main__":
