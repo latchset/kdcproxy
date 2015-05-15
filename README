@@ -16,17 +16,17 @@ to use mod_wsgi, try something like this::
 
     WSGIDaemonProcess kdcproxy processes=2 threads=15 maximum-requests=1000 \
         display-name=%{GROUP}
-    WSGIProcessGroup kdcproxy
-    WSGIApplicationGroup kdcproxy
     WSGIImportScript /usr/lib/python2.7/site-packages/kdcproxy/__init__.py \
         process-group=kdcproxy application-group=kdcproxy
     WSGIScriptAlias /KdcProxy /usr/lib/python2.7/site-packages/kdcproxy/__init__.py
     WSGIScriptReloading Off
 
     <Location "/KdcProxy">
-    Satisfy Any
-    Order Deny,Allow
-    Allow from all
+        Satisfy Any
+        Order Deny,Allow
+        Allow from all
+        WSGIProcessGroup kdcproxy
+        WSGIApplicationGroup kdcproxy
     </Location>
 
 `[MS-KKDCP]`_ suggests /KdcProxy as end point. For more information, see the
