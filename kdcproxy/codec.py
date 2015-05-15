@@ -129,6 +129,7 @@ class KPASSWDProxyRequest(ProxyRequest):
     def __str__(self):
         tmp = super(KPASSWDProxyRequest, self).__str__()
         tmp += " (version 0x%04x)" % self.version
+        return tmp
 
 
 def decode(data):
