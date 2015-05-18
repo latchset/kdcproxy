@@ -20,6 +20,7 @@
 # THE SOFTWARE.
 
 import io
+import logging
 import select
 import socket
 import struct
@@ -69,6 +70,7 @@ class Application:
 
     def __await_reply(self, pr, rsocks, wsocks, timeout):
         extra = 0
+        read_buffers = {}
         while (timeout + extra) > time.time():
             if not wsocks and not rsocks:
                 break
@@ -95,25 +97,58 @@ class Application:
                     else:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
-                except:
+                except Exception:
+                    logging.exception('Error in recv() of %s', sock)
                     continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
 
             for sock in r:
                 try:
-                    reply = sock.recv(1048576)
-
-                    # If we proxy over UDP, we will be missing the 4-byte
-                    # length prefix. So add it.
-                    if self.sock_type(sock) == socket.SOCK_DGRAM:
-                        reply = struct.pack("!I", len(reply)) + reply
-
-                    return reply
-                except:
-                    pass
+                    reply = self.__handle_recv(sock, read_buffers)
+                except Exception:
+                    logging.exception('Error in recv() of %s', sock)
+                    if self.sock_type(sock) == socket.SOCK_STREAM:
+                        # Remove broken TCP socket from readers
+                        rsocks.remove(sock)
+                else:
+                    if reply is not None:
+                        return reply
 
         return None
+
+    def __handle_recv(self, sock, read_buffers):
+        if self.sock_type(sock) == socket.SOCK_DGRAM:
+            # For UDP sockets, recv() returns an entire datagram
+            # package. KDC sends one datagram as reply.
+            reply = sock.recv(1048576)
+            # If we proxy over UDP, we will be missing the 4-byte
+            # length prefix. So add it.
+            reply = struct.pack("!I", len(reply)) + reply
+            return reply
+        else:
+            # TCP is a different story. The reply must be buffered
+            # until the full answer is accumulated.
+            buf = read_buffers.get(sock)
+            part = sock.recv(1048576)
+            if buf is None:
+                if len(part) > 4:
+                    # got enough data in the initial package. Now check
+                    # if we got the full package in the first run.
+                    (length, ) = struct.unpack("!I", part[0:4])
+                    if length + 4 == len(part):
+                        return part
+                read_buffers[sock] = buf = io.BytesIO()
+
+            if part:
+                # data received, accumulate it in a buffer
+                buf.write(part)
+                return None
+            else:
+                # EOF received
+                read_buffers.pop(sock)
+                reply = buf.getvalue()
+                return reply
 
     def __filter_addr(self, addr):
         if addr[0] not in (socket.AF_INET, socket.AF_INET6):
