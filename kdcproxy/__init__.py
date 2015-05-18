@@ -20,6 +20,7 @@
 # THE SOFTWARE.
 
 import io
+import logging
 import select
 import socket
 import struct
@@ -70,6 +71,7 @@ class Application:
 
     def __await_reply(self, pr, rsocks, wsocks, timeout):
         extra = 0
+        rbuf = {}
         while (timeout + extra) > time.time():
             if not wsocks and not rsocks:
                 break
@@ -96,23 +98,29 @@ class Application:
                     else:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
-                except:
+                except Exception:
+                    logging.exception('Error in recv() of %s', sock)
                     continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
 
             for sock in r:
+                buf = rbuf.setdefault(sock, [])
                 try:
-                    reply = sock.recv(1048576)
-
-                    # If we proxy over UDP, we will be missing the 4-byte
-                    # length prefix. So add it.
-                    if self.sock_type(sock) == socket.SOCK_DGRAM:
-                        reply = struct.pack("!I", len(reply)) + reply
-
-                    return reply
-                except:
-                    pass
+                    part = sock.recv(1048576)
+                    if part:
+                        # data received, accumulate it in a buffer
+                        buf.append(part)
+                    else:
+                        # EOF received
+                        reply = b''.join(buf)
+                        # If we proxy over UDP, we will be missing the 4-byte
+                        # length prefix. So add it.
+                        if self.sock_type(sock) == socket.SOCK_DGRAM:
+                            reply = struct.pack("!I", len(reply)) + reply
+                        return reply
+                except Exception:
+                    logging.exception('Error in recv() of %s', sock)
 
         return None
 
