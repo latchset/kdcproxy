@@ -101,6 +101,15 @@ section.
 
 For more information, see the documentation for MIT's krb5.conf.
 
+Configuration reloading
+-----------------------
+
+kdcproxy reads its configurtion files when package is imported and a global
+WSGI application object is instantiated. For now kdcproxy does neither
+monitor its configuration files for changes nor supports runtime updates. You
+have to restart the WSGI process to make modification available. With Apache
+HTTP and mod_wsgi, a reload of the server also restarts all WSGI daemons.
+
 
 Configuring a client for kdcproxy
 =================================
