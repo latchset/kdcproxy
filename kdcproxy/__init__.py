@@ -20,6 +20,7 @@
 # THE SOFTWARE.
 
 import io
+import logging
 import select
 import socket
 import struct
@@ -41,13 +42,14 @@ class HTTPException(Exception):
 
     def __init__(self, code, msg, headers=[]):
         headers = list(filter(lambda h: h[0] != 'Content-Length', headers))
-        headers.append(('Content-Length', str(len(msg))))
 
         if 'Content-Type' not in dict(headers):
-            headers.append(('Content-Type', 'text/plain'))
+            headers.append(('Content-Type', 'text/plain; charset=utf-8'))
 
         if sys.version_info.major == 3 and isinstance(msg, str):
-            msg = bytes(msg, "UTF8")
+            msg = bytes(msg, "utf-8")
+
+        headers.append(('Content-Length', str(len(msg))))
 
         super(HTTPException, self).__init__(code, msg, headers)
         self.code = code
@@ -69,6 +71,7 @@ class Application:
 
     def __await_reply(self, pr, rsocks, wsocks, timeout):
         extra = 0
+        rbuf = {}
         while (timeout + extra) > time.time():
             if not wsocks and not rsocks:
                 break
@@ -95,23 +98,29 @@ class Application:
                     else:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
-                except:
+                except Exception:
+                    logging.exception('Error in recv() of %s', sock)
                     continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
 
             for sock in r:
+                buf = rbuf.setdefault(sock, [])
                 try:
-                    reply = sock.recv(1048576)
-
-                    # If we proxy over UDP, we will be missing the 4-byte
-                    # length prefix. So add it.
-                    if self.sock_type(sock) == socket.SOCK_DGRAM:
-                        reply = struct.pack("!I", len(reply)) + reply
-
-                    return reply
-                except:
-                    pass
+                    part = sock.recv(1048576)
+                    if part:
+                        # data received, accumulate it in a buffer
+                        buf.append(part)
+                    else:
+                        # EOF received
+                        reply = b''.join(buf)
+                        # If we proxy over UDP, we will be missing the 4-byte
+                        # length prefix. So add it.
+                        if self.sock_type(sock) == socket.SOCK_DGRAM:
+                            reply = struct.pack("!I", len(reply)) + reply
+                        return reply
+                except Exception:
+                    logging.exception('Error in recv() of %s', sock)
 
         return None
 
@@ -138,8 +147,7 @@ class Application:
             # Validate the method
             method = env["REQUEST_METHOD"].upper()
             if method != "POST":
-                raise HTTPException(405, "Method not allowed (%s)." % method,
-                                    ("Allow", "POST"))
+                raise HTTPException(405, "Method not allowed (%s)." % method)
 
             # Parse the request
             try:
