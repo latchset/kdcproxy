@@ -21,4 +21,3 @@ exclude_lines =
     if __name__ == .__main__.:
     if PY3
     if not PY3
-
