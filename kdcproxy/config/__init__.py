@@ -49,15 +49,18 @@ class IConfig(IResolver):
 
 class KDCProxyConfig(IConfig):
     GLOBAL = "global"
+    default_filename = "/etc/kdcproxy.conf"
 
     def __init__(self, filename=None):
         self.__cp = configparser.ConfigParser()
         if filename is None:
             filename = os.environ.get("KDCPROXY_CONFIG", None)
+        if filename is None:
+            filename = self.default_filename
         try:
-            self.__cp.read(filename or "/etc/kdcproxy.conf")
+            self.__cp.read(filename)
         except configparser.Error:
-            logging.log(logging.ERROR, "Unable to read config file: %s" % file)
+            logging.error("Unable to read config file: %s", filename)
 
         try:
             mod = self.__cp.get(self.GLOBAL, "configs")
