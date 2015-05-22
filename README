@@ -1,9 +1,8 @@
-====================
 Welcome to kdcproxy!
 ====================
 
 This package contains a WSGI module for proxying KDC requests over HTTP by
-following the `[MS-KKDCP]`_ protocol. It aims to be simple to deploy, with
+following the [MS-KKDCP] protocol. It aims to be simple to deploy, with
 minimal configuration.
 
 Deploying kdcproxy
@@ -29,7 +28,7 @@ to use mod_wsgi, try something like this::
         WSGIApplicationGroup kdcproxy
     </Location>
 
-`[MS-KKDCP]`_ suggests /KdcProxy as end point. For more information, see the
+[MS-KKDCP] suggests /KdcProxy as end point. For more information, see the
 documentation of your WSGI server.
 
 
@@ -117,7 +116,7 @@ Configuring a client for kdcproxy
 HTTPS proxy support is available since Kerberos 5 release 1.13. Some
 vendors have backported the feature to older versions of krb5, too. In order
 to use a HTTPS proxy, simply point the kdc and kpasswd options to the proxy URL like
-explained in `HTTPS proxy`_ configuration guide. Your ``/etc/krb5.conf`` may
+explained in [HTTPS proxy] configuration guide. Your ``/etc/krb5.conf`` may
 look like this::
 
     [libdefaults]
@@ -151,12 +150,13 @@ Services Daemon's Kerberos locator plugin might override the settings in
 /etc/krb5.conf. With the environment variable ``SSSD_KRB5_LOCATOR_DEBUG=1``,
 kinit and sssd_krb5_locator_plugin print out additional debug information. To
 disable the KDC locator feature, edit ``/etc/sssd/sssd.conf`` and set
-``krb5_use_kdcinfo`` to False::
+``krb5_use_kdcinfo`` to False:
 
     [domain/example.com]
     krb5_use_kdcinfo = False
 
 Don't forget to restart SSSD!
 
-.. _[MS-KKDCP]: http://msdn.microsoft.com/en-us/library/hh553774.aspx
-.. _HTTPS Proxy: http://web.mit.edu/kerberos/krb5-current/doc/admin/https.html
+[MS-KKDCP]: http://msdn.microsoft.com/en-us/library/hh553774.aspx
+
+[HTTPS Proxy]: http://web.mit.edu/kerberos/krb5-current/doc/admin/https.html
