@@ -26,7 +26,10 @@ to use mod_wsgi, try something like this::
         Allow from all
         WSGIProcessGroup kdcproxy
         WSGIApplicationGroup kdcproxy
+        LimitRequestBody 100000
     </Location>
+
+NOTE WELL: LimitRequestBody is essential to prevent DoS attacks.
 
 [MS-KKDCP] suggests /KdcProxy as end point. For more information, see the
 documentation of your WSGI server.
