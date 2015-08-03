@@ -61,6 +61,7 @@ class HTTPException(Exception):
 
 
 class Application:
+    MAX_LENGTH = 128 * 1024
     SOCKTYPES = {
         "tcp": socket.SOCK_STREAM,
         "udp": socket.SOCK_DGRAM,
@@ -180,7 +181,11 @@ class Application:
             try:
                 length = int(env["CONTENT_LENGTH"])
             except AttributeError:
-                length = -1
+                raise HTTPException(411, "Length required.")
+            if length < 0:
+                raise HTTPException(411, "Length required.")
+            if length > self.MAX_LENGTH:
+                raise HTTPException(413, "Request entity too large.")
             try:
                 pr = codec.decode(env["wsgi.input"].read(length))
             except codec.ParsingError as e:
