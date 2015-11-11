@@ -27,10 +27,10 @@ import struct
 import sys
 import time
 
-try:  # Python 3.x
+if (sys.version_info.major >= 3): # Python 3.x
     import http.client as httplib
     import urllib.parse as urlparse
-except ImportError:  # Python 2.x
+else:
     import httplib
     import urlparse
 
