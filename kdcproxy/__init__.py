@@ -19,6 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import errno
 import io
 import logging
 import select
@@ -59,6 +60,31 @@ class HTTPException(Exception):
     def __str__(self):
         return "%d %s" % (self.code, httplib.responses[self.code])
 
+# Keeps a mapping of realms to a known-working-server in that
+# realm so that we can try it first.  Useful if a KDC has gone
+# down.
+class WorkingServerMap:
+    def __init__(self):
+        self.__good_servers={}
+
+    def mark_working(self, realm, server):
+        logging.debug('marking %s working for %s', server, realm)
+        self.__good_servers[realm]=server
+
+    def mark_broken(self, realm, server):
+        logging.debug('marking %s broken for %s', server, realm)
+        if realm in self.__good_servers:
+            if (self.__good_servers[realm] == server):
+                del self.__good_servers[realm]
+
+    # Returns a list of servers reordered to prioritize known-working servers
+    def reorder_servers(self, realm, servers):
+        if realm in self.__good_servers:
+            new_list = list(servers)
+            new_list.remove(self.__good_servers[realm])
+            return (self.__good_servers[realm],) + tuple(new_list)
+        else:
+            return servers
 
 class Application:
     MAX_LENGTH = 128 * 1024
@@ -69,6 +95,7 @@ class Application:
 
     def __init__(self):
         self.__resolver = MetaResolver()
+        self.__server_map = WorkingServerMap()
 
     def __await_reply(self, pr, rsocks, wsocks, timeout):
         extra = 0
@@ -99,9 +126,18 @@ class Application:
                     else:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
-                except Exception:
-                    logging.exception('Error in recv() of %s', sock)
-                    continue
+                except Exception as e:
+                    if e.errno == errno.EHOSTUNREACH:
+                        # This KDC may not be up.  Because this is a
+                        # common occurrence in some deployments, don't
+                        # log anything, and instead stop trying to
+                        # send, since we won't be able to do anything
+                        # more with it.
+                        wsocks.remove(sock)
+                        continue
+                    else:
+                        logging.exception('Error in sendall() of %s', sock)
+                        continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
 
@@ -115,6 +151,7 @@ class Application:
                         rsocks.remove(sock)
                 else:
                     if reply is not None:
+                        logging.debug('returning reply')
                         return reply
 
         return None
@@ -206,7 +243,12 @@ class Application:
             reply = None
             wsocks = []
             rsocks = []
-            for server in map(urlparse.urlparse, servers):
+            logging.debug('using servers %s', servers)
+            server_list = self.__server_map.reorder_servers(
+                pr.realm,
+                map(urlparse.urlparse, servers))
+            for server in server_list:
+                logging.debug('trying server %s', server)
                 # Enforce valid, supported URIs
                 scheme = server.scheme.lower().split("+", 1)
                 if scheme[0] not in ("kerberos", "kpasswd"):
@@ -229,6 +271,7 @@ class Application:
                 # more attempt after all servers have been contacted.
                 addrs = tuple(sorted(filter(self.__filter_addr, addrs)))
                 for addr in addrs + (None,):
+                    logging.debug('trying address %s', addr)
                     if addr is not None:
                         # Bypass unspecified socktypes
                         if (len(scheme) > 1
@@ -266,7 +309,10 @@ class Application:
                         break
 
                 if reply is not None:
+                    self.__server_map.mark_working(pr.realm, server)
                     break
+                else:
+                    self.__server_map.mark_broken(pr.realm, server)
 
             for sock in rsocks + wsocks:
                 sock.close()
