@@ -21,17 +21,39 @@
 
 import os
 import sys
-from distutils.core import setup
 
-dns = "dnspython"
-if sys.version_info.major == 3:
-    dns += "3"
+import setuptools
+from setuptools import setup
+
+
+SETUPTOOLS_VERSION = tuple(int(v) for v in setuptools.__version__.split("."))
+
+install_requires = [
+    'pyasn1',
+]
+
+extras_require = {
+    "tests": ["pytest", "coverage", "WebTest"],
+    "test_pep8": ['flake8', 'flake8-import-order', 'pep8-naming']
+}
+
+if SETUPTOOLS_VERSION >= (18, 0):
+    extras_require.update({
+        ":python_version<'3'": ["dnspython"],
+        ":python_version>='3'": ["dnspython3"],
+    })
+else:
+    if sys.version_info.major == 2:
+        install_requires.append("dnspython")
+    else:
+        install_requires.append("dnspython3")
 
 
 def read(fname):
     fname = os.path.join(os.path.dirname(__file__), fname)
     with open(fname) as f:
         return f.read()
+
 
 setup(
     name="kdcproxy",
@@ -44,7 +66,8 @@ setup(
     url="http://github.com/npmccallum/kdcproxy",
     packages=['kdcproxy', 'kdcproxy.config'],
     long_description=read('README'),
-    requires=['pyasn1', dns],
+    install_requires=install_requires,
+    extras_require=extras_require,
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Environment :: Web Environment",
