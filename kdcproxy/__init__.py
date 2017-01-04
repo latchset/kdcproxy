@@ -231,8 +231,8 @@ class Application:
                 for addr in addrs + (None,):
                     if addr is not None:
                         # Bypass unspecified socktypes
-                        if (len(scheme) > 1
-                                and addr[1] != self.SOCKTYPES[scheme[1]]):
+                        if (len(scheme) > 1 and
+                                addr[1] != self.SOCKTYPES[scheme[1]]):
                             continue
 
                         # Create the socket
@@ -280,5 +280,6 @@ class Application:
         except HTTPException as e:
             start_response(str(e), e.headers)
             return [e.message]
+
 
 application = Application()
