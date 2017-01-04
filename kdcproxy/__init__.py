@@ -27,15 +27,15 @@ import struct
 import sys
 import time
 
-if (sys.version_info.major >= 3): # Python 3.x
+import kdcproxy.codec as codec
+from kdcproxy.config import MetaResolver
+
+if sys.version_info.major >= 3:  # Python 3.x
     import http.client as httplib
     import urllib.parse as urlparse
 else:
     import httplib
     import urlparse
-
-import kdcproxy.codec as codec
-from kdcproxy.config import MetaResolver
 
 
 class HTTPException(Exception):
