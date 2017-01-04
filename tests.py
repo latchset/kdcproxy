@@ -34,7 +34,7 @@ from dns.rdtypes.IN.SRV import SRV
 
 from pyasn1.codec.der import decoder, encoder
 
-from webtest import TestApp
+from webtest import TestApp as WebTestApp
 
 import kdcproxy
 # from kdcproxy import asn1
@@ -59,7 +59,7 @@ class KDCProxyWSGITests(unittest.TestCase):
         self.await_reply.return_value = b'RESPONSE'
         self.resolver = self.app._Application__resolver = mock.Mock()
         self.resolver.lookup.return_value = ["kerberos://k1.kdcproxy.test.:88"]
-        self.tapp = TestApp(self.app)
+        self.tapp = WebTestApp(self.app)
 
     def post(self, body, expect_errors=False):
         return self.tapp.post(
@@ -79,7 +79,7 @@ class KDCProxyWSGITests(unittest.TestCase):
         self.assertEqual(r.text, 'Method not allowed (GET).')
 
     @mock.patch('socket.getaddrinfo', return_value=addrinfo)
-    @mock.patch('socket.socket', autospec=True)
+    @mock.patch('socket.socket')
     def test_post_asreq(self, m_socket, m_getaddrinfo):
         response = self.post(KDCProxyCodecTests.asreq1)
         self.assert_response(response)
@@ -92,7 +92,7 @@ class KDCProxyWSGITests(unittest.TestCase):
         )
 
     @mock.patch('socket.getaddrinfo', return_value=addrinfo)
-    @mock.patch('socket.socket', autospec=True)
+    @mock.patch('socket.socket')
     def test_post_kpasswd(self, m_socket, m_getaddrinfo):
         response = self.post(KDCProxyCodecTests.kpasswdreq)
         self.assert_response(response)
