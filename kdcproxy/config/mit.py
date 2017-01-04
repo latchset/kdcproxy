@@ -33,7 +33,9 @@ from kdcproxy.config import IConfig
 class KRB5Error(Exception):
     pass
 
+
 PY3 = sys.version_info[0] == 3
+
 
 try:
     LIBKRB5 = ctypes.CDLL('libkrb5.so.3')
@@ -271,6 +273,7 @@ class MITConfig(IConfig):
 
     def use_dns(self, default=True):
         return self.__config["dns"]
+
 
 if __name__ == "__main__":
     from pprint import pprint
