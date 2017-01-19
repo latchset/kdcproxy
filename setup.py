@@ -57,7 +57,7 @@ def read(fname):
 
 setup(
     name="kdcproxy",
-    version="0.3.2",
+    version="0.3.3",
     author="Nalin Dahyabhai, Nathaniel McCallum, Christian Heimes",
     author_email="nalin@redhat.com, npmccallum@redhat.com, cheimes@redhat.com",
     description=("A kerberos KDC HTTP proxy WSGI module."),
@@ -69,13 +69,15 @@ setup(
     install_requires=install_requires,
     extras_require=extras_require,
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Environment :: Web Environment",
         "Intended Audience :: System Administrators",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6"
         "Topic :: Internet :: Proxy Servers",
     ],
 )
