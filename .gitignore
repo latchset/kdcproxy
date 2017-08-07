@@ -7,3 +7,4 @@ __pycache__
 /MANIFEST
 /*.egg-info
 /.cache
+/.coverage.*
