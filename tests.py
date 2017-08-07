@@ -20,6 +20,7 @@
 # THE SOFTWARE.
 
 import os
+import sys
 import unittest
 from base64 import b64decode
 try:
@@ -32,15 +33,13 @@ from dns.rdataclass import IN as RDCLASS_IN
 from dns.rdatatype import SRV as RDTYPE_SRV
 from dns.rdtypes.IN.SRV import SRV
 
-from pyasn1.codec.der import decoder, encoder
-
 from webtest import TestApp as WebTestApp
 
 import kdcproxy
-# from kdcproxy import asn1
 from kdcproxy import codec
 from kdcproxy import config
 from kdcproxy.config import mit
+
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KRB5_CONFIG = os.path.join(HERE, 'tests.krb5.conf')
@@ -184,18 +183,24 @@ class KDCProxyCodecTests(unittest.TestCase):
     """)
 
     def assert_decode(self, data, cls):
+        # manual decode
+        request, realm, _ = codec.asn1mod.decode_proxymessage(data)
+        self.assertEqual(realm, self.realm)
+        inst = cls.parse_request(realm, request)
+        self.assertIsInstance(inst, cls)
+        self.assertEqual(inst.realm, self.realm)
+        self.assertEqual(inst.request, request)
+        if cls is codec.KPASSWDProxyRequest:
+            self.assertEqual(inst.version, 1)
+        # codec decode
         outer = codec.decode(data)
         self.assertEqual(outer.realm, self.realm)
         self.assertIsInstance(outer, cls)
-        if cls is not codec.KPASSWDProxyRequest:
-            inner, err = decoder.decode(outer.request[outer.OFFSET:],
-                                        asn1Spec=outer.TYPE())
-            if err:  # pragma: no cover
-                self.fail(err)
-            self.assertIsInstance(inner, outer.TYPE)
-            der = encoder.encode(inner)
-            encoded = codec.encode(der)
-            self.assertIsInstance(encoded, bytes)
+        # re-decode
+        der = codec.encode(outer.request)
+        self.assertIsInstance(der, bytes)
+        decoded = codec.decode(der)
+        self.assertIsInstance(decoded, cls)
         return outer
 
     def test_asreq(self):
@@ -215,6 +220,21 @@ class KDCProxyCodecTests(unittest.TestCase):
             str(outer),
             'FREEIPA.LOCAL KPASSWD-REQ (603 bytes) (version 0x0001)'
         )
+
+    def test_asn1mod(self):
+        modmap = {
+            'asn1crypto': (
+                'kdcproxy.parse_asn1crypto', 'kdcproxy.parse_pyasn1'),
+            'pyasn1': (
+                'kdcproxy.parse_pyasn1', 'kdcproxy.parse_asn1crypto'),
+        }
+        asn1mod = os.environ.get('KDCPROXY_ASN1MOD', None)
+        if asn1mod is None:
+            self.fail("Tests require KDCPROXY_ASN1MOD env var.")
+        self.assertIn(asn1mod, modmap)
+        mod, opposite = modmap[asn1mod]
+        self.assertIn(mod, set(sys.modules))
+        self.assertNotIn(opposite, set(sys.modules))
 
 
 class KDCProxyConfigTests(unittest.TestCase):

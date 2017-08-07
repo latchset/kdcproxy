@@ -29,7 +29,7 @@ from setuptools import setup
 SETUPTOOLS_VERSION = tuple(int(v) for v in setuptools.__version__.split("."))
 
 install_requires = [
-    'pyasn1',
+    'asn1crypto>=0.23',
 ]
 
 extras_require = {
@@ -57,7 +57,7 @@ def read(fname):
 
 setup(
     name="kdcproxy",
-    version="0.3.3",
+    version="0.4.dev1",
     author="Nalin Dahyabhai, Nathaniel McCallum, Christian Heimes",
     author_email="nalin@redhat.com, npmccallum@redhat.com, cheimes@redhat.com",
     description=("A kerberos KDC HTTP proxy WSGI module."),
