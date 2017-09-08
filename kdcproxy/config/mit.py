@@ -93,7 +93,7 @@ else:
 
     krb5_free_context = LIBKRB5.krb5_free_context
     krb5_free_context.argtypes = (krb5_context, )
-    krb5_free_context.retval = None
+    krb5_free_context.restype = None
 
     krb5_get_profile = LIBKRB5.krb5_get_profile
     krb5_get_profile.argtypes = (krb5_context, ctypes.POINTER(profile_t))
@@ -114,7 +114,7 @@ else:
 
     profile_iterator_free = LIBKRB5.profile_iterator_free
     profile_iterator_free.argtypes = (ctypes.POINTER(iter_p), )
-    profile_iterator_free.retval = None
+    profile_iterator_free.restype = None
 
     profile_iterator = LIBKRB5.profile_iterator
     profile_iterator.argtypes = (ctypes.POINTER(iter_p),
