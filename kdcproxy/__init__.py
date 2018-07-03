@@ -99,8 +99,8 @@ class Application:
                     else:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
-                except Exception:
-                    logging.exception('Error in recv() of %s', sock)
+                except Exception as e:
+                    logging.warning("Conection broken while writing (%s)", e)
                     continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
@@ -108,8 +108,8 @@ class Application:
             for sock in r:
                 try:
                     reply = self.__handle_recv(sock, read_buffers)
-                except Exception:
-                    logging.exception('Error in recv() of %s', sock)
+                except Exception as e:
+                    logging.warning("Connection broken while reading (%s)", e)
                     if self.sock_type(sock) == socket.SOCK_STREAM:
                         # Remove broken TCP socket from readers
                         rsocks.remove(sock)
