@@ -55,11 +55,18 @@ def read(fname):
         return f.read()
 
 
+# in chronological order
+authors = {
+    "Nalin Dahyabhai": "nalin@redhat.com",
+    "Nathaniel McCallum": "npmccallum@redhat.com",
+    "Christian Heimes": "cheimes@redhat.com",
+    "Robbie Harwood": "rharwood@redhat.com",
+}
 setup(
     name="kdcproxy",
     version="0.4",
-    author="Nalin Dahyabhai, Nathaniel McCallum, Christian Heimes, Robbie Harwood",
-    author_email="nalin@redhat.com, npmccallum@redhat.com, cheimes@redhat.com, rharwood@redhat.com",
+    author=", ".join(authors.keys()),
+    author_email=", ".join(authors.values()),
     description=("A kerberos KDC HTTP proxy WSGI module."),
     license="MIT",
     keywords="krb5 proxy http https kerberos",
