@@ -33,7 +33,11 @@ from dns.rdataclass import IN as RDCLASS_IN
 from dns.rdatatype import SRV as RDTYPE_SRV
 from dns.rdtypes.IN.SRV import SRV
 
-from webtest import TestApp as WebTestApp
+try:
+    from webtest import TestApp as WebTestApp
+except ImportError:
+    print("webtest not installed!  Tests will be skipped")
+    WebTestApp = "skip"
 
 import kdcproxy
 from kdcproxy import codec
@@ -45,6 +49,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 KRB5_CONFIG = os.path.join(HERE, 'tests.krb5.conf')
 
 
+@unittest.skipIf(WebTestApp == "skip", "webtest not installed")
 class KDCProxyWSGITests(unittest.TestCase):
     addrinfo = [
         (2, 1, 6, '', ('128.66.0.2', 88)),
