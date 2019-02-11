@@ -20,33 +20,18 @@
 # THE SOFTWARE.
 
 import os
-import sys
 
-import setuptools
 from setuptools import setup
-
-
-SETUPTOOLS_VERSION = tuple(int(v) for v in setuptools.__version__.split("."))
 
 install_requires = [
     'asn1crypto>=0.23',
+    'dnspython'
 ]
 
 extras_require = {
     "tests": ["pytest", "coverage", "WebTest"],
     "test_pep8": ['flake8', 'flake8-import-order', 'pep8-naming']
 }
-
-if SETUPTOOLS_VERSION >= (18, 0):
-    extras_require.update({
-        ":python_version<'3'": ["dnspython"],
-        ":python_version>='3'": ["dnspython3"],
-    })
-else:
-    if sys.version_info.major == 2:
-        install_requires.append("dnspython")
-    else:
-        install_requires.append("dnspython3")
 
 
 def read(fname):
