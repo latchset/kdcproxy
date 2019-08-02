@@ -227,7 +227,8 @@ class Application:
                 #
                 # Stick a None address on the end so we can get one
                 # more attempt after all servers have been contacted.
-                addrs = tuple(sorted(filter(self.__filter_addr, addrs)))
+                addrs = tuple(sorted(filter(self.__filter_addr, addrs),
+                                     key=lambda a: a[2]))
                 for addr in addrs + (None,):
                     if addr is not None:
                         # Bypass unspecified socktypes
