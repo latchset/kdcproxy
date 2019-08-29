@@ -49,7 +49,7 @@ authors = {
 }
 setup(
     name="kdcproxy",
-    version="0.4.1",
+    version="0.4.2",
     author=", ".join(authors.keys()),
     author_email=", ".join(authors.values()),
     description=("A kerberos KDC HTTP proxy WSGI module."),
