@@ -145,6 +145,9 @@ two POST requests in the access log of the WSGI server and a line containing
     [1037] 1431509096.46411: Terminating TCP connection to https 128.66.0.1:443
     ...
 
+(If you only see one POST request, check that your principals require preauth,
+and mandate it if they don't.)
+
 If kinit still connects to port 88/TCP or port 88/UDP, then System Security
 Services Daemon's Kerberos locator plugin might override the settings in
 /etc/krb5.conf. With the environment variable ``SSSD_KRB5_LOCATOR_DEBUG=1``,
