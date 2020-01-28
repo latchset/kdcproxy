@@ -19,6 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import errno
 import io
 import logging
 import select
@@ -255,7 +256,7 @@ class Application:
                             # Python 3.x, it throws io.BlockingIOError().
                             sock.connect(addr[4])
                         except socket.error as e:
-                            if e.errno != 115:  # errno != EINPROGRESS
+                            if e.errno != errno.EINPROGRESS:
                                 sock.close()
                                 continue
                         except io.BlockingIOError:
