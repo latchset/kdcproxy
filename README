@@ -53,10 +53,11 @@ Master Configuration File
 If you wish to have more detailed configuration, the first place you can
 configure kdcproxy is the master configuration file. This file exists at the
 location specified in the environment variable KDCPROXY_CONFIG. If this
-variable is unspecified, the default location is /etc/kdcproxy.conf. This
-configuration file takes precedence over all other configuration modules. This
-file is an ini-style configuration with a special section **[global]**. Two
-parameters are available in this section: **configs** and **use_dns**.
+variable is unspecified, the default locations are
+`/usr/local/etc/kdcproxy.conf` or `/etc/kdcproxy.conf`. This configuration
+file takes precedence over all other configuration modules. This file is an
+ini-style configuration with a special section **[global]**. Two parameters
+are available in this section: **configs** and **use_dns**.
 
 The **use_dns** allows you to enable or disable use of DNS SRV record lookups.
 
