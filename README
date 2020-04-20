@@ -39,9 +39,11 @@ When kdcproxy receives a request, it needs to know where to proxy it to. This
 is the purpose of configuration: discovering where to send kerberos requests.
 
 One important note: where the underlying configuration does not specify TCP or
-UDP, both will be attempted. TCP will be attempted before UDP. This permits the
-use of longer timeouts and prevents possible lockouts when the KDC packets
-contain OTP token codes (which should preferably be sent to only one server).
+UDP, both will be attempted. TCP will be attempted before UDP, hence setting
+`udp_preference_limit = 1` is not required for kdcproxy itself (though krb5
+may still need it). This permits the use of longer timeouts and prevents
+possible lockouts when the KDC packets contain OTP token codes (which should
+preferably be sent to only one server).
 
 Automatic Configuration
 -----------------------
