@@ -15,9 +15,9 @@ to use mod_wsgi, try something like this::
 
     WSGIDaemonProcess kdcproxy processes=2 threads=15 maximum-requests=1000 \
         display-name=%{GROUP}
-    WSGIImportScript /usr/lib/python2.7/site-packages/kdcproxy/__init__.py \
+    WSGIImportScript /usr/lib/python3.6/site-packages/kdcproxy/__init__.py \
         process-group=kdcproxy application-group=kdcproxy
-    WSGIScriptAlias /KdcProxy /usr/lib/python2.7/site-packages/kdcproxy/__init__.py
+    WSGIScriptAlias /KdcProxy /usr/lib/python3.6/site-packages/kdcproxy/__init__.py
     WSGIScriptReloading Off
 
     <Location "/KdcProxy">
