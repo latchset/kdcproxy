@@ -27,6 +27,35 @@ matrix:
     - python: 3.7
       env: TOXENV=py3pep8
 
+    # el8
+    - python: 3.6
+      env: TOXENV=py36-asn1crypto
+      arch: ppc64le
+    - python: 3.6
+      env: TOXENV=py3pep8
+      arch: ppc64le
+
+    # latest 2-series
+    - python: 2.7
+      env: TOXENV=py27-asn1crypto
+      arch: ppc64le
+    - python: 2.7
+      env: TOXENV=py27-pyasn1
+      arch: ppc64le
+    - python: 2.7
+      env: TOXENV=pep8
+      arch: ppc64le
+
+    # latest 3-series
+    - python: 3.7
+      env: TOXENV=py37-asn1crypto
+      arch: ppc64le
+    - python: 3.7
+      env: TOXENV=py37-pyasn1
+      arch: ppc64le
+    - python: 3.7
+      env: TOXENV=py3pep8
+      arch: ppc64le
 install:
   - pip install --upgrade pip setuptools
   - pip --version
