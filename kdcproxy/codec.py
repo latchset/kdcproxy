@@ -19,35 +19,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import os
 import struct
 
+from kdcproxy import parse_pyasn1 as asn1mod
 from kdcproxy.exceptions import ParsingError
-
-ASN1MOD = os.environ.get('KDCPROXY_ASN1MOD')
-
-if ASN1MOD is None:
-    try:
-        from asn1crypto.version import __version_info__ as asn1crypto_version
-    except ImportError:
-        asn1crypto_version = None
-    else:
-        if asn1crypto_version >= (0, 22, 0):
-            ASN1MOD = 'asn1crypto'
-    if ASN1MOD is None:
-        try:
-            __import__('pyasn1')
-        except ImportError:
-            pass
-        else:
-            ASN1MOD = 'pyasn1'
-
-if ASN1MOD == 'asn1crypto':
-    from kdcproxy import parse_asn1crypto as asn1mod
-elif ASN1MOD == 'pyasn1':
-    from kdcproxy import parse_pyasn1 as asn1mod
-else:
-    raise ValueError("Invalid KDCPROXY_ASN1MOD='{}'".format(ASN1MOD))
 
 
 class ProxyRequest(object):
