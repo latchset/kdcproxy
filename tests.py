@@ -20,7 +20,6 @@
 # THE SOFTWARE.
 
 import os
-import sys
 import unittest
 from base64 import b64decode
 try:
@@ -225,21 +224,6 @@ class KDCProxyCodecTests(unittest.TestCase):
             str(outer),
             'FREEIPA.LOCAL KPASSWD-REQ (603 bytes) (version 0x0001)'
         )
-
-    def test_asn1mod(self):
-        modmap = {
-            'asn1crypto': (
-                'kdcproxy.parse_asn1crypto', 'kdcproxy.parse_pyasn1'),
-            'pyasn1': (
-                'kdcproxy.parse_pyasn1', 'kdcproxy.parse_asn1crypto'),
-        }
-        asn1mod = os.environ.get('KDCPROXY_ASN1MOD', None)
-        if asn1mod is None:
-            self.fail("Tests require KDCPROXY_ASN1MOD env var.")
-        self.assertIn(asn1mod, modmap)
-        mod, opposite = modmap[asn1mod]
-        self.assertIn(mod, set(sys.modules))
-        self.assertNotIn(opposite, set(sys.modules))
 
 
 class KDCProxyConfigTests(unittest.TestCase):

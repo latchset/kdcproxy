@@ -24,7 +24,7 @@ import os
 from setuptools import setup
 
 install_requires = [
-    'asn1crypto>=0.23',
+    'pyasn1',
     'dnspython'
 ]
 
