@@ -2,4 +2,3 @@ include README COPYING
 include tox.ini
 include setup.cfg
 include tests.py tests.krb5.conf
-include .coveragerc

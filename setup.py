@@ -29,7 +29,7 @@ install_requires = [
 ]
 
 extras_require = {
-    "tests": ["pytest", "coverage", "WebTest"],
+    "tests": ["pytest", "WebTest"],
     "test_pep8": ['flake8', 'flake8-import-order', 'pep8-naming']
 }
 
