@@ -7,22 +7,72 @@
             "strategy": {
                 "fail-fast": false,
                 "matrix": {
-                    "python": [
-                        "3.6",
-                        "3.7",
-                        "3.8",
-                        "3.9",
+                    "name": [
+                        "python-38",
+                        "python-39",
+                        "python-310",
+                        "python-311",
+                        "pep8",
+                        "py3pep8",
+                        "doc",
+                    ],
+                    "include": [
+                        {
+                            "name": "python-38",
+                            "python": "3.8",
+                            "toxenv": "py38",
+                        },
+                        {
+                            "name": "python-39",
+                            "python": "3.9",
+                            "toxenv": "py39",
+                        },
+                        {
+                            "name": "python-310",
+                            "python": "3.10",
+                            "toxenv": "py310",
+                        },
+                        {
+                            "name": "python-311",
+                            "python": "3.11",
+                            "toxenv": "py311",
+                        },
+                        {
+                            "name": "pep8",
+                            "python": "3.10",
+                            "toxenv": "pep8",
+                            "arch": "x64",
+                        },
+                        {
+                            "name": "py3pep8",
+                            "python": "3.10",
+                            "toxenv": "pep8",
+                            "arch": "x64",
+                        },
+                        {
+                            "name": "doc",
+                            "python": "3.10",
+                            "toxenv": "doc",
+                            "arch": "x64",
+                        },
                     ],
                 },
             },
             "steps": [
-                { "uses": "actions/checkout@v2" },
+                { "uses": "actions/checkout@v4" },
                 {
-                    "uses": "actions/setup-python@v2",
+                    "uses": "actions/setup-python@v5",
                     "with": { "python-version": "${{ matrix.python }}"},
                 },
+                { "run": "pip --version" },
                 { "run": "pip install tox" },
-                { "run": "tox" },
+                { "run": "tox --version" },
+                {
+                    "env": {
+                          "TOXENV": "${{matrix.toxenv}}"
+                    },
+                    "run": "tox",
+                },
             ],
         },
     },
