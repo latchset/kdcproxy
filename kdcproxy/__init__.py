@@ -101,7 +101,7 @@ class Application:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
                 except Exception as e:
-                    logging.warning("Conection broken while writing (%s)", e)
+                    logging.warning("Connection broken while writing (%s)", e)
                     continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
