@@ -101,7 +101,8 @@ class Application:
                         sock.sendall(pr.request)
                         extra = 10  # New connections get 10 extra seconds
                 except Exception as e:
-                    logging.warning("Connection broken while writing (%s)", e)
+                    logging.warning(
+                        "kdcproxy: Connection broken while writing (%s)", e)
                     continue
                 rsocks.append(sock)
                 wsocks.remove(sock)
@@ -110,7 +111,8 @@ class Application:
                 try:
                     reply = self.__handle_recv(sock, read_buffers)
                 except Exception as e:
-                    logging.warning("Connection broken while reading (%s)", e)
+                    logging.warning(
+                        "kdcproxy: Connection broken while reading (%s)", e)
                     if self.sock_type(sock) == socket.SOCK_STREAM:
                         # Remove broken TCP socket from readers
                         rsocks.remove(sock)

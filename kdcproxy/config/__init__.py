@@ -60,14 +60,16 @@ class KDCProxyConfig(IConfig):
         try:
             self.__cp.read(filenames)
         except configparser.Error:
-            logging.error("Unable to read config file(s): %s", filenames)
+            logging.error("kdcproxy: Unable to read config file(s): %s",
+                          filenames)
 
         try:
             mod = self.__cp.get(self.GLOBAL, "configs")
             try:
                 importlib.import_module("kdcproxy.config." + mod)
             except ImportError as e:
-                logging.log(logging.ERROR, "Error reading config: %s" % e)
+                logging.log(logging.ERROR,
+                            "kdcproxy: Error reading config: %s" % e)
         except configparser.Error:
             pass
 
@@ -134,7 +136,7 @@ class MetaResolver(IResolver):
             except Exception as e:
                 fmt = (allsub[i], repr(e))
                 logging.log(logging.WARNING,
-                            "Error instantiating %s due to %s" % fmt)
+                            "kdcproxy: Error instantiating %s due to %s" % fmt)
         assert self.__resolvers
 
         # See if we should use DNS
