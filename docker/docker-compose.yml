@@ -1,0 +1,45 @@
+---
+version: '3'
+services:
+  kdcproxy:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: kdcproxy-apache
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    environment:
+      - KDCPROXY_CONFIG=/config/kdcproxy.conf
+      - SERVER_NAME=${SERVER_NAME:-selfsign.rausys.de}
+    volumes:
+      - config:/config:ro
+      - certs:/certs:ro
+    extra_hosts:
+      - "test-dc1.contoso.loc:10.10.10.10"
+
+  omgwtfssl:
+    image: paulczar/omgwtfssl
+    container_name: kdcproxy-ssl
+    restart: "no"
+    volumes:
+      - certs:/certs
+    environment:
+      - SSL_SUBJECT=${SERVER_NAME:-selfsign.rausys.de}
+      - SSL_KEY=/certs/cert.key
+      - SSL_CSR=/certs/cert.csr
+      - SSL_CERT=/certs/cert.crt
+
+volumes:
+  config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./config
+  certs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./certs
