@@ -38,6 +38,9 @@ else:
     import httplib
     import urlparse
 
+logging.basicConfig()
+logger = logging.getLogger('kdcproxy')
+
 
 class HTTPException(Exception):
 
@@ -327,8 +330,8 @@ class Application:
                         fail_socktype = self.addr2socktypename(fail_addr)
                         fail_ip = fail_addr[4][0]
                         fail_port = fail_addr[4][1]
-                        logging.warning("Exchange with %s:[%s]:%d failed: %s",
-                                        fail_socktype, fail_ip, fail_port, e)
+                        logger.warning("Exchange with %s:[%s]:%d failed: %s",
+                                       fail_socktype, fail_ip, fail_port, e)
                     if reply is not None:
                         break
 

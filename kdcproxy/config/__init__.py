@@ -32,6 +32,9 @@ except ImportError:  # Python 2.x
 import dns.rdatatype
 import dns.resolver
 
+logging.basicConfig()
+logger = logging.getLogger('kdcproxy')
+
 
 class IResolver(object):
 
@@ -60,14 +63,14 @@ class KDCProxyConfig(IConfig):
         try:
             self.__cp.read(filenames)
         except configparser.Error:
-            logging.error("Unable to read config file(s): %s", filenames)
+            logger.error("Unable to read config file(s): %s", filenames)
 
         try:
             mod = self.__cp.get(self.GLOBAL, "configs")
             try:
                 importlib.import_module("kdcproxy.config." + mod)
             except ImportError as e:
-                logging.log(logging.ERROR, "Error reading config: %s" % e)
+                logger.log(logging.ERROR, "Error reading config: %s" % e)
         except configparser.Error:
             pass
 
