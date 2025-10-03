@@ -232,19 +232,9 @@ class MITConfig(IConfig):
     def __init__(self, *args, **kwargs):
         self.__config = {}
         with KRB5Profile() as prof:
-            # Load DNS setting
-            self.__config["dns"] = prof.get_bool("libdefaults",
-                                                 "dns_fallback",
-                                                 default=True)
-            if "dns_lookup_kdc" in dict(prof.section("libdefaults")):
-                self.__config["dns"] = prof.get_bool("libdefaults",
-                                                     "dns_lookup_kdc",
-                                                     default=True)
-
             # Load all configured realms
-            self.__config["realms"] = {}
             for realm, values in prof.section("realms"):
-                rconf = self.__config["realms"].setdefault(realm, {})
+                rconf = self.__config.setdefault(realm, {})
                 for server, hostport in values:
                     if server not in self.CONFIG_KEYS:
                         continue
@@ -261,7 +251,7 @@ class MITConfig(IConfig):
                     rconf.setdefault(server, []).append(parsed.geturl())
 
     def lookup(self, realm, kpasswd=False):
-        rconf = self.__config.get("realms", {}).get(realm, {})
+        rconf = self.__config.get(realm, {})
 
         if kpasswd:
             servers = list(rconf.get('kpasswd_server', []))
@@ -271,8 +261,13 @@ class MITConfig(IConfig):
 
         return tuple(servers)
 
-    def use_dns(self, default=True):
-        return self.__config["dns"]
+    def realm_configured(self, realm):
+        """Check if a realm is declared in the MIT krb5 configuration."""
+        return realm in self.__config
+
+    def param(self, realm, param):
+        """Always None. MIT krb5 config only provides server addresses."""
+        return None
 
 
 if __name__ == "__main__":
