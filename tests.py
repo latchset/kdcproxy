@@ -20,6 +20,8 @@
 # THE SOFTWARE.
 
 import os
+import socket
+import struct
 import unittest
 from base64 import b64decode
 try:
@@ -121,6 +123,74 @@ class KDCProxyWSGITests(unittest.TestCase):
         self.resolver.lookup.assert_called_once_with('FREEIPA.LOCAL',
                                                      kpasswd=True)
         self.assertEqual(response.status_code, 503)
+
+    @mock.patch("socket.getaddrinfo", return_value=addrinfo)
+    @mock.patch("socket.socket")
+    def test_tcp_message_length_exceeds_max(self, m_socket, m_getaddrinfo):
+        # Test that TCP messages with length > MAX_LENGTH raise ValueError
+        # Create a message claiming to be larger than MAX_LENGTH
+        max_len = self.app.MAX_LENGTH
+        # Length prefix claiming message is larger than allowed
+        oversized_length = max_len + 1
+        malicious_msg = struct.pack("!I", oversized_length)
+
+        # Mock socket to return the malicious length prefix
+        mock_sock = m_socket.return_value
+        mock_sock.recv.return_value = malicious_msg
+        mock_sock.getsockopt.return_value = socket.SOCK_STREAM
+
+        # Manually call the receive method to test it
+        read_buffers = {}
+        with self.assertRaises(ValueError) as cm:
+            self.app._Application__handle_recv(mock_sock, read_buffers)
+
+        self.assertIn("exceeds the maximum length", str(cm.exception))
+        self.assertIn(str(max_len), str(cm.exception))
+
+    @mock.patch("socket.getaddrinfo", return_value=addrinfo)
+    @mock.patch("socket.socket")
+    def test_tcp_message_data_exceeds_expected_length(
+        self, m_socket, m_getaddrinfo
+    ):
+        # Test that receiving more data than expected raises ValueError
+        # Create a message with length = 100 but send more data
+        expected_length = 100
+        length_prefix = struct.pack("!I", expected_length)
+        # Send more data than the length prefix indicates
+        extra_data = b"X" * (expected_length + 10)
+        malicious_msg = length_prefix + extra_data
+
+        mock_sock = m_socket.return_value
+        mock_sock.recv.return_value = malicious_msg
+        mock_sock.getsockopt.return_value = socket.SOCK_STREAM
+
+        read_buffers = {}
+        with self.assertRaises(ValueError) as cm:
+            self.app._Application__handle_recv(mock_sock, read_buffers)
+
+        self.assertIn("exceeds its expected length", str(cm.exception))
+
+    @mock.patch("socket.getaddrinfo", return_value=addrinfo)
+    @mock.patch("socket.socket")
+    def test_tcp_eof_returns_buffered_data(self, m_socket, m_getaddrinfo):
+        # Test that EOF returns any buffered data
+        initial_data = b"\x00\x00\x00\x10"  # Length = 16
+        mock_sock = m_socket.return_value
+        mock_sock.getsockopt.return_value = socket.SOCK_STREAM
+
+        # First recv returns some data, second returns empty (EOF)
+        mock_sock.recv.side_effect = [initial_data, b""]
+
+        read_buffers = {}
+        # First call buffers the data
+        result = self.app._Application__handle_recv(mock_sock, read_buffers)
+        self.assertIsNone(result)  # Not complete yet
+
+        # Second call gets EOF and returns buffered data
+        result = self.app._Application__handle_recv(mock_sock, read_buffers)
+        self.assertEqual(result, initial_data)
+        # Buffer should be cleaned up
+        self.assertNotIn(mock_sock, read_buffers)
 
 
 def decode(data):
