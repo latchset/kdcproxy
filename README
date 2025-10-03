@@ -45,25 +45,43 @@ may still need it). This permits the use of longer timeouts and prevents
 possible lockouts when the KDC packets contain OTP token codes (which should
 preferably be sent to only one server).
 
-Automatic Configuration
------------------------
-By default, no configuration is necessary. In this case, kdcproxy will use
-REALM DNS SRV record lookups to determine remote KDC locations.
-
-Master Configuration File
+Main Configuration File
 -------------------------
-If you wish to have more detailed configuration, the first place you can
-configure kdcproxy is the master configuration file. This file exists at the
-location specified in the environment variable KDCPROXY_CONFIG. If this
-variable is unspecified, the default locations are
+The location of kdcproxy's main configuration file is specified by the
+`KDCPROXY_CONFIG` environment variable. If not set, the default locations are
 `/usr/local/etc/kdcproxy.conf` or `/etc/kdcproxy.conf`. This configuration
 file takes precedence over all other configuration modules. This file is an
-ini-style configuration with a special section **[global]**. Two parameters
-are available in this section: **configs** and **use_dns**.
+ini-style configuration with a special **[global]** section, wildcard realm
+sections, and exact realm sections.
 
-The **use_dns** allows you to enable or disable use of DNS SRV record lookups.
+Exact realm sections are named after the realms that kdcproxy is expected to
+receive requests for. Wildcard realm sections differ from exact realm sections
+by being prefixed by a '\*' character. Such sections will match with realms
+having either all or their final labels in common with the section. As an
+example, **[\*EXAMPLE.COM]** will match with `EXAMPLE.COM`, `SUB.EXAMPLE.COM`,
+and `SUB.SUB.EXAMPLE.COM`, but not `MYEXAMPLE.COM`.
 
-The **configs** parameter allows you to load other configuration modules for
+The following parameters can be set on any of these sections, with exact realm
+parameters having higher precedence, followed by wildcard realm parameters, and
+then global parameters:
+
+**use_dns** (boolean): Allows querying DNS SRV records (aka. DNS discovery) to
+find KDCs associated with the requested realm in case they are not explicitly
+set in the configuration (main one, or configuration module-provided). By
+default (or if explicitly enabled globally), this mechanism is **activated only
+for realms explicitly declared** in the main (an empty section named after the
+realm, or a matching wildcard realm section is enough) or module-provided
+configuration. To allow use of DNS discovery for any requested realm, see the
+**dns_realm_discovery** parameter.
+
+**silence_port_warn** (boolean): When DNS SRV records are used to discover KDC
+addresses, kdcproxy will write a warning in the logs in case a non-standard
+port is found in the DNS response. Setting this parameter to `true` will
+silence such warnings.
+
+The following parameters are specific to the **[global]** section:
+
+**configs** (string): Allows you to load other configuration modules for
 finding configuration in other places. The configuration modules specified in
 here will have priority in the order listed. For instance, if you wished to
 read configuration from MIT libkrb5, you would set the following:
@@ -71,11 +89,19 @@ read configuration from MIT libkrb5, you would set the following:
     [global]
     configs = mit
 
-Aside from the **[global]** section, you may also specify manual configuration
-for realms. In this case, each section is the name of the realm and the
-parameters are **kerberos** or **kpasswd**. These specify the locations of the
-remote servers for krb5 AS requests and kpasswd requests, respectively. For
-example:
+**dns_realm_discovery** (boolean): When **use_dns** is not disabled globally,
+kdcproxy is allowed to query SRV records to find KDCs of the realms declared in
+its configuration only. This protects kdcproxy from attacks based on
+server-side request forgery (CVE-2025-59088). Allowing DNS discovery for
+unknown realms too is possible by also setting **dns_realm_discovery** to true,
+yet heavily discouraged:
+
+    [global]
+    dns_realm_discovery = true
+
+Exact realm sections have 2 specific parameters: **kerberos** and **kpasswd**.
+These specify the locations of the remote servers for Kerberos ticket requests,
+and kpasswd requests, respectively. For example:
 
     [EXAMPLE.COM]
     kerberos = kerberos+tcp://kdc.example.com:88
@@ -95,11 +121,10 @@ forwarding requests. The port number is optional. Possible schemes are:
 MIT libkrb5
 -----------
 
-If you load the **mit** config module in the master configuration file,
-kdcproxy will also read the config using libkrb5 (usually /etc/krb5.conf). If
-this module is used, kdcproxy will respect the DNS settings from the
-**[libdefaults]** section and the realm configuration from the **[realms]**
-section.
+If you load the **mit** config module in the main configuration file, kdcproxy
+will also read the config using libkrb5 (usually /etc/krb5.conf). If this
+module is used, kdcproxy will respect the realm configuration from the
+**[realms]** section.
 
 For more information, see the documentation for MIT's krb5.conf.
 

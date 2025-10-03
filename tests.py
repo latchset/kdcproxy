@@ -19,9 +19,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import contextlib
 import os
 import socket
 import struct
+import tempfile
 import unittest
 from base64 import b64decode
 try:
@@ -298,11 +300,24 @@ class KDCProxyCodecTests(unittest.TestCase):
 
 class KDCProxyConfigTests(unittest.TestCase):
 
+    @contextlib.contextmanager
+    def temp_config_file(self, content):
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".conf"
+        ) as f:
+            f.write(content)
+            config_file = f.name
+
+        try:
+            yield config_file
+        finally:
+            os.remove(config_file)
+
     def test_mit_config(self):
         with mock.patch.dict('os.environ', {'KRB5_CONFIG': KRB5_CONFIG}):
             cfg = mit.MITConfig()
 
-        self.assertIs(cfg.use_dns(), False)
+        self.assertIs(cfg.param('KDCPROXY.TEST', 'use_dns'), None)
         self.assertEqual(
             cfg.lookup('KDCPROXY.TEST'),
             (
@@ -381,6 +396,832 @@ class KDCProxyConfigTests(unittest.TestCase):
         m_query.assert_any_call('_kerberos-adm._tcp.KDCPROXY.TEST', RDTYPE_SRV)
         m_query.assert_any_call('_kpasswd._udp.KDCPROXY.TEST', RDTYPE_SRV)
         m_query.assert_any_call('_kerberos-adm._udp.KDCPROXY.TEST', RDTYPE_SRV)
+
+    def test_kdcproxy_config_realm_configured(self):
+        with self.temp_config_file(
+            """[REALM1.TEST]
+               kerberos = kerberos://kdc1.realm1.test:88
+               [REALM2.TEST]
+               kpasswd = kpasswd://kpwd.realm2.test:464\n"""
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # Test configured realms
+            self.assertTrue(cfg.realm_configured("REALM1.TEST"))
+            self.assertTrue(cfg.realm_configured("REALM2.TEST"))
+
+            # Test unconfigured realm
+            self.assertFalse(cfg.realm_configured("UNKNOWN.TEST"))
+
+            # Test that 'global' cannot be used as realm name
+            with self.assertRaises(ValueError):
+                cfg.realm_configured("global")
+
+    def test_kdcproxy_config_param(self):
+        with self.temp_config_file(
+            """[global]
+               silence_port_warn = true
+               [REALM1.TEST]
+               use_dns = false
+               kerberos = kerberos://kdc1.realm1.test:88
+               [REALM2.TEST]
+               kerberos = kerberos://kdc2.realm2.test:88"""
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # Test realm-specific parameter overrides global
+            self.assertFalse(cfg.param("REALM1.TEST", "use_dns"))
+
+            # Test fallback to global parameter
+            self.assertTrue(cfg.param("REALM1.TEST", "silence_port_warn"))
+            self.assertTrue(cfg.param("REALM2.TEST", "use_dns"))
+            self.assertTrue(cfg.param("REALM2.TEST", "silence_port_warn"))
+
+            # Test invalid parameter
+            with self.assertRaises(ValueError):
+                cfg.param("REALM1.TEST", "invalid_param")
+
+            # Test that 'global' cannot be used as realm name
+            with self.assertRaises(ValueError):
+                cfg.param("global", "use_dns")
+
+    def test_kdcproxy_config_lookup(self):
+        with self.temp_config_file(
+            "[REALM.TEST]\n"
+            "kerberos = kerberos://kdc1.test:88 "
+            "kerberos://kdc2.test:88\n"
+            "kpasswd = kpasswd://kpwd.test:464"
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # Test kerberos lookup
+            self.assertEqual(
+                cfg.lookup("REALM.TEST"),
+                ("kerberos://kdc1.test:88", "kerberos://kdc2.test:88"),
+            )
+
+            # Test kpasswd lookup
+            self.assertEqual(
+                cfg.lookup("REALM.TEST", kpasswd=True),
+                ("kpasswd://kpwd.test:464",),
+            )
+
+            # Test unconfigured realm
+            self.assertEqual(cfg.lookup("UNKNOWN.TEST"), ())
+
+            # Test that 'global' cannot be used as realm name
+            with self.assertRaises(ValueError):
+                cfg.lookup("global")
+
+    @mock.patch("dns.resolver.query")
+    def test_dns_blocked_for_undeclared_realms(self, m_query):
+        with mock.patch.object(config.KDCProxyConfig, "default_filenames", []):
+            resolver = config.MetaResolver()
+
+            # DNS should NOT be used for unconfigured realm
+            result = resolver.lookup("UNCONFIGURED.TEST")
+            self.assertEqual(result, ())
+            m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_use_dns_false_disables_dns_discovery(self, m_query):
+        # Test exact realm section
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               [REALM.TEST]
+               ; Exact realm declared but no servers specified"""
+        ) as config_file:
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS should NOT be used when use_dns is false for exact realm
+                result = resolver.lookup("REALM.TEST")
+                self.assertEqual(result, ())
+                m_query.assert_not_called()
+
+        # Test wildcard realm section
+        m_query.reset_mock()
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               [*EXAMPLE.COM]
+               ; Wildcard realm declared but no servers specified"""
+        ) as config_file:
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS should NOT be used when use_dns is false for wildcard
+                # realm
+                result = resolver.lookup("SUB.EXAMPLE.COM")
+                self.assertEqual(result, ())
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_use_dns_true_enables_dns_for_declared_realms(self, m_query):
+        # Test exact realm section
+        with self.temp_config_file(
+            """[global]
+               use_dns = true
+               [REALM.TEST]
+               ; Exact realm declared but no servers specified"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.realm.test.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS SHOULD be used when exact realm is declared and use_dns
+                # is true
+                result = resolver.lookup("REALM.TEST")
+                self.assertEqual(result, ("kerberos://kdc.realm.test:88",))
+                self.assertEqual(m_query.call_count, 2)
+
+        # Test wildcard realm section
+        m_query.reset_mock()
+        with self.temp_config_file(
+            """[global]
+               use_dns = true
+               [*EXAMPLE.COM]
+               ; Wildcard realm declared but no servers specified"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.sub.example.com.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS SHOULD be used when wildcard realm matches and use_dns
+                # is true
+                result = resolver.lookup("SUB.EXAMPLE.COM")
+                self.assertEqual(
+                    result, ("kerberos://kdc.sub.example.com:88",)
+                )
+                self.assertEqual(m_query.call_count, 2)
+
+    @mock.patch("logging.Logger.warning")
+    @mock.patch("dns.resolver.query")
+    def test_dns_discovery_warns_on_nonstandard_port(
+        self, m_query, m_log_warning
+    ):
+        # Test exact realm section
+        with self.temp_config_file(
+            """[REALM.TEST]"""
+        ) as config_file:
+            # DNS returns KDC on non-standard port
+            tcp_srv = [self.mksrv("0 0 1088 kdc.realm.test.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("REALM.TEST")
+
+                # Should return the server
+                self.assertEqual(result, ("kerberos://kdc.realm.test:1088",))
+
+                # Should log warning about non-standard port for exact realm
+                m_log_warning.assert_called_once()
+                args = m_log_warning.call_args[0]
+                self.assertIn("non-standard port", args[0])
+                self.assertEqual(args[5], 1088)  # port
+                self.assertEqual(args[6], 88)  # expected port
+
+        # Test wildcard realm section
+        m_query.reset_mock()
+        m_log_warning.reset_mock()
+        with self.temp_config_file(
+            """[*EXAMPLE.COM]"""
+        ) as config_file:
+            # DNS returns KDC on non-standard port
+            tcp_srv = [self.mksrv("0 0 1088 kdc.sub.example.com.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("SUB.EXAMPLE.COM")
+
+                # Should return the server
+                self.assertEqual(
+                    result, ("kerberos://kdc.sub.example.com:1088",)
+                )
+
+                # Should log warning about non-standard port for wildcard realm
+                m_log_warning.assert_called_once()
+                args = m_log_warning.call_args[0]
+                self.assertIn("non-standard port", args[0])
+                self.assertEqual(args[5], 1088)  # port
+                self.assertEqual(args[6], 88)  # expected port
+
+    @mock.patch("logging.Logger.warning")
+    @mock.patch("dns.resolver.query")
+    def test_silence_port_warn_suppresses_nonstandard_port_warnings(
+        self, m_query, m_log_warning
+    ):
+        # Test exact realm section
+        with self.temp_config_file(
+            """[REALM.TEST]
+               silence_port_warn = true"""
+        ) as config_file:
+            # DNS returns KDC on non-standard port
+            tcp_srv = [self.mksrv("0 0 1088 kdc.realm.test.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("REALM.TEST")
+
+                # Should return the server
+                self.assertEqual(result, ("kerberos://kdc.realm.test:1088",))
+
+                # Should NOT log warning when silenced for exact realm
+                m_log_warning.assert_not_called()
+
+        # Test wildcard realm section
+        m_query.reset_mock()
+        m_log_warning.reset_mock()
+        with self.temp_config_file(
+            """[*EXAMPLE.COM]
+               silence_port_warn = true"""
+        ) as config_file:
+            # DNS returns KDC on non-standard port
+            tcp_srv = [self.mksrv("0 0 1088 kdc.sub.example.com.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("SUB.EXAMPLE.COM")
+
+                # Should return the server
+                self.assertEqual(
+                    result, ("kerberos://kdc.sub.example.com:1088",)
+                )
+
+                # Should NOT log warning when silenced for wildcard realm
+                m_log_warning.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_configured_servers_preferred_over_dns_discovery(self, m_query):
+        # Create a config with servers configured
+        with self.temp_config_file(
+            """[REALM.TEST]
+               kerberos = kerberos://configured-kdc.test:88"""
+        ) as config_file:
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("REALM.TEST")
+
+                # Should return configured server, not DNS
+                self.assertEqual(
+                    result, ("kerberos://configured-kdc.test:88",)
+                )
+
+                # DNS should not be queried when servers are configured
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_mit_realm_prefers_configured_servers_over_dns(self, m_query):
+        # Test that realm in MIT config uses configured servers even when
+        # use_dns = true
+        with self.temp_config_file(
+            """[global]
+               use_dns = true
+               configs = mit"""
+        ) as config_file:
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("KDCPROXY.TEST")
+
+                # Should return MIT-configured servers (from tests.krb5.conf)
+                self.assertEqual(
+                    result,
+                    (
+                        "kerberos://k1.kdcproxy.test.:88",
+                        "kerberos://k2.kdcproxy.test.:1088",
+                    ),
+                )
+
+                # DNS should NOT be queried when servers are in MIT config
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_mit_realm_uses_configured_servers_when_use_dns_false(
+        self, m_query
+    ):
+        # Test that realm in MIT config uses configured servers when
+        # use_dns = false
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               configs = mit"""
+        ) as config_file:
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("KDCPROXY.TEST")
+
+                # Should return MIT-configured servers
+                self.assertEqual(
+                    result,
+                    (
+                        "kerberos://k1.kdcproxy.test.:88",
+                        "kerberos://k2.kdcproxy.test.:1088",
+                    ),
+                )
+
+                # DNS should NOT be queried
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_mit_kpasswd_prefers_configured_servers_over_dns(self, m_query):
+        # Test that kpasswd servers from MIT config are used even when
+        # use_dns = true
+        with self.temp_config_file(
+            """[global]
+               use_dns = true
+               configs = mit"""
+        ) as config_file:
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("KDCPROXY.TEST", kpasswd=True)
+
+                # Should return MIT-configured kpasswd servers
+                self.assertEqual(
+                    result,
+                    (
+                        "kpasswd://adm.kdcproxy.test.:1749",
+                        "kpasswd://adm.kdcproxy.test.",
+                    ),
+                )
+
+                # DNS should NOT be queried
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_kdcproxy_declared_realm_uses_dns_when_no_servers(self, m_query):
+        # Test that a realm in kdcproxy.conf (but not MIT) will use DNS when no
+        # servers are configured
+        with self.temp_config_file(
+            """[global]
+               configs = mit
+               [REALM.TEST]
+               ; Realm section exists but no servers configured"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.realm.test.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("REALM.TEST")
+
+                # Should use DNS since realm is in config but has no servers
+                self.assertEqual(result, ("kerberos://kdc.realm.test:88",))
+                self.assertEqual(m_query.call_count, 2)
+
+    @mock.patch("dns.resolver.query")
+    def test_realm_specific_use_dns_overrides_global(self, m_query):
+        # Test that realm-specific use_dns overrides global setting for a realm
+        # that's in MIT config
+        with self.temp_config_file(
+            """[global]
+               use_dns = true
+               configs = mit
+               [KDCPROXY.TEST]
+               use_dns = false"""
+        ) as config_file:
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # First check: should return MIT servers
+                result = resolver.lookup("KDCPROXY.TEST")
+                self.assertEqual(
+                    result,
+                    (
+                        "kerberos://k1.kdcproxy.test.:88",
+                        "kerberos://k2.kdcproxy.test.:1088",
+                    ),
+                )
+
+                # DNS should not be queried due to realm override
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_kdcproxy_servers_override_mit_servers(self, m_query):
+        # Test that servers configured in kdcproxy.conf take precedence over
+        # MIT config servers
+        with self.temp_config_file(
+            """[global]
+               configs = mit
+               [KDCPROXY.TEST]
+               kerberos = kerberos://override.test:88"""
+        ) as config_file:
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("KDCPROXY.TEST")
+
+                # Should return kdcproxy.conf servers, not MIT servers
+                self.assertEqual(result, ("kerberos://override.test:88",))
+
+                # DNS should not be queried
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_undeclared_realm_blocks_dns_despite_use_dns_true(self, m_query):
+        # Test that a realm NOT in MIT and NOT in kdcproxy.conf will NOT use
+        # DNS even with use_dns = true (security restriction)
+        with self.temp_config_file(
+            """[global]
+               use_dns = true
+               configs = mit"""
+        ) as config_file:
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": KRB5_CONFIG}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("UNCONFIGURED.REALM")
+
+                # Should return empty - no DNS lookup
+                self.assertEqual(result, ())
+
+                # DNS should NOT be queried for unconfigured realm
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_mit_declared_realm_without_servers_uses_dns(self, m_query):
+        # Test that a realm in MIT config but WITHOUT KDC servers configured
+        # will use DNS
+
+        # Create a krb5.conf with a realm section but no kdc entries
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".conf"
+        ) as krb5_file:
+            krb5_file.write(
+                """[libdefaults]
+                   default_realm = EMPTY.REALM
+
+                   [realms]
+                   EMPTY.REALM = {
+                       default_domain = empty.realm
+                   }"""
+            )
+            krb5_conf = krb5_file.name
+
+        # Create kdcproxy.conf
+        with self.temp_config_file(
+            """[global]
+               configs = mit"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.empty.realm.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.dict(
+                "os.environ", {"KRB5_CONFIG": krb5_conf}
+            ), mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+                result = resolver.lookup("EMPTY.REALM")
+
+                # Should use DNS because:
+                # 1. Realm is in MIT config (realm_configured returns True)
+                # 2. No servers configured in MIT config
+                # 3. use_dns enabled globally by default
+                self.assertEqual(result, ("kerberos://kdc.empty.realm:88",))
+
+                # DNS SHOULD be queried
+                self.assertEqual(m_query.call_count, 2)
+                m_query.assert_any_call(
+                    "_kerberos._tcp.EMPTY.REALM", RDTYPE_SRV
+                )
+                m_query.assert_any_call(
+                    "_kerberos._udp.EMPTY.REALM", RDTYPE_SRV
+                )
+            os.remove(krb5_conf)
+
+    def test_kdcproxy_config_realm_wildcard_matching(self):
+        # Test realm matching with wildcard patterns
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               [SPECIFIC.SUB.EXAMPLE.COM]
+               kerberos = kerberos://specific.example.com:88
+               [*SUB.EXAMPLE.COM]
+               use_dns = true
+               [*EXAMPLE.COM]
+               silence_port_warn = true"""
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # Test exact match
+            self.assertTrue(cfg.realm_configured("SPECIFIC.SUB.EXAMPLE.COM"))
+            self.assertEqual(
+                cfg.lookup("SPECIFIC.SUB.EXAMPLE.COM"),
+                ("kerberos://specific.example.com:88",),
+            )
+
+            # Test wildcard matching for *SUB.EXAMPLE.COM
+            self.assertTrue(cfg.realm_configured("OTHER.SUB.EXAMPLE.COM"))
+            # Wildcard sections don't support kerberos/kpasswd params
+            self.assertEqual(cfg.lookup("OTHER.SUB.EXAMPLE.COM"), ())
+
+            # Test wildcard matching for *EXAMPLE.COM
+            self.assertTrue(cfg.realm_configured("FOO.EXAMPLE.COM"))
+            self.assertEqual(cfg.lookup("FOO.EXAMPLE.COM"), ())
+
+            # Test wildcard matches exact realm name (EXAMPLE.COM matches
+            # *EXAMPLE.COM)
+            self.assertTrue(cfg.realm_configured("EXAMPLE.COM"))
+            self.assertTrue(cfg.param("EXAMPLE.COM", "silence_port_warn"))
+
+            # Test multi-level subdomain matches wildcard
+            self.assertTrue(cfg.realm_configured("A.B.C.EXAMPLE.COM"))
+
+            # Test non-matching realm (MYEXAMPLE.COM should NOT match
+            # *EXAMPLE.COM)
+            self.assertFalse(cfg.realm_configured("MYEXAMPLE.COM"))
+            self.assertEqual(cfg.lookup("MYEXAMPLE.COM"), ())
+
+            # Test other non-matching realm
+            self.assertFalse(cfg.realm_configured("OTHER.DOMAIN"))
+            self.assertEqual(cfg.lookup("OTHER.DOMAIN"), ())
+
+    def test_kdcproxy_config_param_wildcard_matching(self):
+        # Test parameter lookup with wildcard patterns
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               silence_port_warn = false
+               [*EXAMPLE.COM]
+               use_dns = true
+               silence_port_warn = true
+               [SPECIFIC.EXAMPLE.COM]
+               silence_port_warn = false"""
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # Test exact match takes precedence for parameters
+            self.assertTrue(cfg.param("SPECIFIC.EXAMPLE.COM", "use_dns"))
+            self.assertFalse(
+                cfg.param("SPECIFIC.EXAMPLE.COM", "silence_port_warn")
+            )
+
+            # Test wildcard parameter matching
+            self.assertTrue(cfg.param("OTHER.EXAMPLE.COM", "use_dns"))
+            self.assertTrue(
+                cfg.param("OTHER.EXAMPLE.COM", "silence_port_warn")
+            )
+
+            # Test fallback to global when no wildcard match
+            self.assertFalse(cfg.param("OTHER.DOMAIN", "use_dns"))
+            self.assertFalse(cfg.param("OTHER.DOMAIN", "silence_port_warn"))
+
+    def test_wildcard_specificity_determines_priority(self):
+        # Test that more specific wildcards take precedence
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               [*EXAMPLE.COM]
+               silence_port_warn = true
+               [*SUB.EXAMPLE.COM]
+               use_dns = true"""
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # More specific wildcard (*SUB.EXAMPLE.COM) should match first
+            self.assertTrue(cfg.param("FOO.SUB.EXAMPLE.COM", "use_dns"))
+            # Should also get parameter from broader wildcard
+            self.assertTrue(
+                cfg.param("FOO.SUB.EXAMPLE.COM", "silence_port_warn")
+            )
+
+            # Broader wildcard should match other subdomains
+            self.assertTrue(
+                cfg.param("FOO.OTHER.EXAMPLE.COM", "silence_port_warn")
+            )
+            # Should fallback to global for use_dns
+            self.assertFalse(cfg.param("FOO.OTHER.EXAMPLE.COM", "use_dns"))
+
+    @mock.patch("dns.resolver.query")
+    def test_kdcproxy_config_exact_realm_priority_over_wildcard(self, m_query):
+        # Test that exact realm sections take precedence over wildcard sections
+        with self.temp_config_file(
+            """[global]
+               use_dns = false
+               silence_port_warn = false
+               [*EXAMPLE.COM]
+               use_dns = true
+               silence_port_warn = true
+               [SPECIFIC.EXAMPLE.COM]
+               kerberos = kerberos://specific-kdc.example.com:88
+               use_dns = false"""
+        ) as config_file:
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # Exact realm section should take priority
+                self.assertTrue(
+                    resolver._MetaResolver__config.realm_configured(
+                        "SPECIFIC.EXAMPLE.COM"
+                    )
+                )
+
+                # Should get kerberos from exact realm section
+                result = resolver.lookup("SPECIFIC.EXAMPLE.COM")
+                self.assertEqual(
+                    result,
+                    ("kerberos://specific-kdc.example.com:88",),
+                )
+
+                # DNS should NOT be called because:
+                # 1. Exact realm has configured servers
+                # 2. Exact realm has use_dns=false (takes priority over
+                #    wildcard)
+                m_query.assert_not_called()
+
+                # Verify exact realm's use_dns=false takes priority
+                self.assertFalse(
+                    resolver._MetaResolver__config.param(
+                        "SPECIFIC.EXAMPLE.COM", "use_dns"
+                    )
+                )
+
+                # Should get silence_port_warn from wildcard since not in exact
+                # section
+                self.assertTrue(
+                    resolver._MetaResolver__config.param(
+                        "SPECIFIC.EXAMPLE.COM", "silence_port_warn"
+                    )
+                )
+
+    def test_dns_realm_discovery_param_defaults_false(self):
+        # Test the dns_realm_discovery global parameter
+        with self.temp_config_file(
+            """[global]
+               dns_realm_discovery = true"""
+        ) as config_file:
+            cfg = config.KDCProxyConfig(filenames=[config_file])
+
+            # Test that dns_realm_discovery can be read
+            self.assertTrue(cfg.param(None, "dns_realm_discovery"))
+
+            # Test default value when not specified
+            cfg2 = config.KDCProxyConfig(filenames=[])
+            self.assertFalse(cfg2.param(None, "dns_realm_discovery"))
+
+    @mock.patch("dns.resolver.query")
+    def test_dns_realm_discovery_true_allows_undeclared_realms(self, m_query):
+        # Test that dns_realm_discovery allows DNS for unconfigured realms
+        with self.temp_config_file(
+            """[global]
+               dns_realm_discovery = true"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.unconfigured.test.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS SHOULD be used for unconfigured realm when
+                # dns_realm_discovery = true
+                result = resolver.lookup("UNCONFIGURED.TEST")
+                self.assertEqual(
+                    result, ("kerberos://kdc.unconfigured.test:88",)
+                )
+                self.assertEqual(m_query.call_count, 2)
+
+    @mock.patch("dns.resolver.query")
+    def test_dns_realm_discovery_false_blocks_undeclared_realms(self, m_query):
+        # Test that dns_realm_discovery=false restricts DNS to configured
+        # realms
+        with self.temp_config_file(
+            """[global]
+               dns_realm_discovery = false"""
+        ) as config_file:
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS should NOT be used for unconfigured realm when
+                # dns_realm_discovery = false
+                result = resolver.lookup("UNCONFIGURED.TEST")
+                self.assertEqual(result, ())
+                m_query.assert_not_called()
+
+    @mock.patch("dns.resolver.query")
+    def test_wildcard_realm_uses_dns_despite_dns_realm_discovery_false(
+        self, m_query
+    ):
+        # Test that wildcard-matched realms can use DNS discovery
+        with self.temp_config_file(
+            """[global]
+               dns_realm_discovery = false
+               [*EXAMPLE.COM]"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.sub.example.com.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS SHOULD be used for wildcard-matched realm even when
+                # dns_realm_discovery = false
+                result = resolver.lookup("SUB.EXAMPLE.COM")
+                self.assertEqual(
+                    result, ("kerberos://kdc.sub.example.com:88",)
+                )
+                self.assertEqual(m_query.call_count, 2)
+
+    @mock.patch("dns.resolver.query")
+    def test_use_dns_defaults_to_true(self, m_query):
+        # Test that use_dns defaults to true when not set
+        with self.temp_config_file(
+            """[REALM.TEST]
+               ; Realm declared but use_dns not specified"""
+        ) as config_file:
+            tcp_srv = [self.mksrv("0 0 88 kdc.realm.test.")]
+            udp_srv = []
+            m_query.side_effect = [tcp_srv, udp_srv]
+
+            with mock.patch.object(
+                config.KDCProxyConfig, "default_filenames", [config_file]
+            ):
+                resolver = config.MetaResolver()
+
+                # DNS SHOULD be used when use_dns is not set (defaults to true)
+                result = resolver.lookup("REALM.TEST")
+                self.assertEqual(result, ("kerberos://kdc.realm.test:88",))
+                self.assertEqual(m_query.call_count, 2)
+
+    @mock.patch("dns.resolver.query")
+    def test_dns_realm_discovery_defaults_to_false(self, m_query):
+        # Test that dns_realm_discovery defaults to false for security
+        with mock.patch.object(config.KDCProxyConfig, "default_filenames", []):
+            resolver = config.MetaResolver()
+
+            # DNS should NOT be used for unconfigured realm by default
+            result = resolver.lookup("UNCONFIGURED.TEST")
+            self.assertEqual(result, ())
+            m_query.assert_not_called()
 
 
 if __name__ == "__main__":
