@@ -149,6 +149,7 @@ class Application:
                     if self.sock_type(sock) == socket.SOCK_STREAM:
                         # Remove broken TCP socket from readers
                         rsocks.remove(sock)
+                        read_buffers.pop(sock)
                 else:
                     if reply is not None:
                         return reply
@@ -174,7 +175,7 @@ class Application:
         if self.sock_type(sock) == socket.SOCK_DGRAM:
             # For UDP sockets, recv() returns an entire datagram
             # package. KDC sends one datagram as reply.
-            reply = sock.recv(1048576)
+            reply = sock.recv(self.MAX_LENGTH)
             # If we proxy over UDP, we will be missing the 4-byte
             # length prefix. So add it.
             reply = struct.pack("!I", len(reply)) + reply
@@ -186,30 +187,38 @@ class Application:
         if buf is None:
             read_buffers[sock] = buf = io.BytesIO()
 
-        part = sock.recv(1048576)
-        if not part:
-            # EOF received.  Return any incomplete data we have on the theory
-            # that a decode error is more apparent than silent failure.  The
-            # client will fail faster, at least.
-            read_buffers.pop(sock)
-            reply = buf.getvalue()
-            return reply
+        part = sock.recv(self.MAX_LENGTH)
+        if part:
+            # Data received, accumulate it in a buffer.
+            buf.write(part)
 
-        # Data received, accumulate it in a buffer.
-        buf.write(part)
+            reply = buf.getbuffer()
+            if len(reply) < 4:
+                # We don't have the length yet.
+                return None
 
-        reply = buf.getvalue()
-        if len(reply) < 4:
-            # We don't have the length yet.
-            return None
+            # Got enough data to check if we have the full package.
+            (length, ) = struct.unpack("!I", reply[0:4])
+            length += 4  # add prefix length
 
-        # Got enough data to check if we have the full package.
-        (length, ) = struct.unpack("!I", reply[0:4])
-        if length + 4 == len(reply):
-            read_buffers.pop(sock)
-            return reply
+            if length > self.MAX_LENGTH:
+                raise ValueError('Message length exceeds the maximum length '
+                                 'for a Kerberos message (%i > %i)'
+                                 % (length, self.MAX_LENGTH))
 
-        return None
+            if len(reply) > length:
+                raise ValueError('Message length exceeds its expected length '
+                                 '(%i > %i)' % (len(reply), length))
+
+            if len(reply) < length:
+                return None
+
+        # Else (if part is None), EOF was received.  Return any incomplete data
+        # we have on the theory that a decode error is more apparent than
+        # silent failure.  The client will fail faster, at least.
+
+        read_buffers.pop(sock)
+        return buf.getvalue()
 
     def __filter_addr(self, addr):
         if addr[0] not in (socket.AF_INET, socket.AF_INET6):
